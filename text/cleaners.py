@@ -88,3 +88,9 @@ def english_cleaners(text):
   text = expand_abbreviations(text)
   text = collapse_whitespace(text)
   return text
+
+def spanish_cleaners(text):
+  '''Pipeline for Spanish text.'''
+  text = lowercase(text)
+  text = collapse_whitespace(text)
+  return text
