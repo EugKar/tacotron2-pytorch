@@ -1,0 +1,1 @@
+python train.py -o spanish_checkpoints -l spanish_logs --hparams "training_files=filelists_spanish/spanish_audio_text_train_filelist.txt,validation_files=filelists_spanish/spanish_audio_text_val_filelist.txt,text_cleaners=[spanish_cleaners],batch_size=8"
