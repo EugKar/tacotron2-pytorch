@@ -10,12 +10,29 @@ import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
 
-from model import Tacotron2
+from model import VAE
 from data_utils import TextMelLoader, TextMelCollate
-from loss_function import Tacotron2Loss
+from loss_function import Tacotron2Loss, VAELoss
 from logger import Tacotron2Logger
 from hparams import create_hparams
 
+import multiprocessing
+multiprocessing.set_start_method('spawn', True)
+
+class VarianceClipper(object):
+
+    def __init__(self, hparams):
+        self.latent_logvar_min = hparams.latent_logvar_min
+        self.observed_logvar_min = hparams.observed_logvar_min
+
+    def __call__(self, module):
+        # filter the variables to get the ones you want
+        if hasattr(module, 'latent_prior_logvar'):
+            param = module.latent_prior_logvar
+            param = param.clamp(min=self.latent_logvar_min)
+        if hasattr(module, 'observed_prior_logvar'):
+            param = module.observed_prior_logvar
+            param = param.clamp(min=self.observed_logvar_min)
 
 def reduce_tensor(tensor, n_gpus):
     rt = tensor.clone()
@@ -71,7 +88,7 @@ def prepare_directories_and_logger(output_directory, log_directory, rank):
 
 
 def load_model(hparams):
-    model = Tacotron2(hparams).cuda()
+    model = VAE(hparams).cuda()
     if hparams.fp16_run:
         model.decoder.attention_layer.score_mask_value = finfo('float16').min
 
@@ -130,9 +147,12 @@ def validate(model, criterion, valset, iteration, batch_size, n_gpus,
 
         val_loss = 0.0
         for i, batch in enumerate(val_loader):
-            x, y = model.parse_batch(batch)
-            y_pred = model(x)
-            loss = criterion(y_pred, y)
+            (x, y), speaker_ids = model.parse_batch(batch)
+            (y_pred, latent_params, observed_params,
+             latent_prior_params, observed_prior_params) = model(x)
+            mel_loss, gate_loss = criterion(y_pred, y)
+            loss = mel_loss + gate_loss
+
             if distributed_run:
                 reduced_val_loss = reduce_tensor(loss.data, n_gpus).item()
             else:
@@ -178,7 +198,10 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     if hparams.distributed_run:
         model = apply_gradient_allreduce(model)
 
-    criterion = Tacotron2Loss()
+    criterion = VAELoss()
+    val_criterion = Tacotron2Loss()
+
+    clipper = VarianceClipper(hparams)
 
     logger = prepare_directories_and_logger(
         output_directory, log_directory, rank)
@@ -211,10 +234,13 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
                 param_group['lr'] = learning_rate
 
             model.zero_grad()
-            x, y = model.parse_batch(batch)
-            y_pred = model(x)
+            (x, y), speaker_ids = model.parse_batch(batch)
+            (y_pred, latent_params, observed_params,
+             latent_prior_params, observed_prior_params) = model(x)
 
-            loss = criterion(y_pred, y)
+            elbo, mel_loss, gate_loss = criterion(y_pred, latent_params, observed_params,
+                latent_prior_params, observed_prior_params, speaker_ids, y)
+            loss = elbo + gate_loss
             if hparams.distributed_run:
                 reduced_loss = reduce_tensor(loss.data, n_gpus).item()
             else:
@@ -235,6 +261,8 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
             optimizer.step()
 
+            model.apply(clipper)
+
             if not is_overflow and rank == 0:
                 duration = time.perf_counter() - start
                 print("Train loss {} {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(
@@ -243,7 +271,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
                     reduced_loss, grad_norm, learning_rate, duration, iteration)
 
             if not is_overflow and (iteration % hparams.iters_per_checkpoint == 0):
-                validate(model, criterion, valset, iteration,
+                validate(model, val_criterion, valset, iteration,
                          hparams.batch_size, n_gpus, collate_fn, logger,
                          hparams.distributed_run, rank)
                 if rank == 0:

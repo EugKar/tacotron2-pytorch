@@ -16,6 +16,7 @@ class TextMelLoader(torch.utils.data.Dataset):
     """
     def __init__(self, audiopaths_and_text, hparams):
         self.audiopaths_and_text = load_filepaths_and_text(audiopaths_and_text)
+        self.speakers_count = hparams.speakers_count
         self.text_cleaners = hparams.text_cleaners
         self.max_wav_value = hparams.max_wav_value
         self.sampling_rate = hparams.sampling_rate
@@ -30,9 +31,16 @@ class TextMelLoader(torch.utils.data.Dataset):
     def get_mel_text_pair(self, audiopath_and_text):
         # separate filename and text
         audiopath, text = audiopath_and_text[0], audiopath_and_text[1]
+        speaker_id = None
+        if len(audiopath_and_text) >= 3:
+            speaker_id = int(audiopath_and_text[2])
         text = self.get_text(text)
         mel = self.get_mel(audiopath)
-        return (text, mel)
+        if self.speakers_count is None:
+            return (text, mel)
+        else:
+            speaker_id = self.get_speaker_id(speaker_id)
+            return (text, mel, speaker_id)
 
     def get_mel(self, filename):
         if not self.load_mel_from_disk:
@@ -56,6 +64,13 @@ class TextMelLoader(torch.utils.data.Dataset):
     def get_text(self, text):
         text_norm = torch.IntTensor(text_to_sequence(text, self.text_cleaners))
         return text_norm
+
+    def get_speaker_id(self, speaker_id):
+        # speaker_id_one_hot = [0] * self.speakers_count
+        # speaker_id_one_hot[speaker_id] = 1
+        # speaker_id_tensor = torch.IntTensor(speaker_id_one_hot)
+        # return speaker_id_tensor
+        return speaker_id
 
     def __getitem__(self, index):
         return self.get_mel_text_pair(self.audiopaths_and_text[index])
@@ -84,9 +99,17 @@ class TextMelCollate():
 
         text_padded = torch.LongTensor(len(batch), max_input_len)
         text_padded.zero_()
+
+        # Add speaker id
+        speaker_ids = torch.LongTensor(len(batch))
+        speaker_ids.zero_()
+
         for i in range(len(ids_sorted_decreasing)):
-            text = batch[ids_sorted_decreasing[i]][0]
+            sample = batch[ids_sorted_decreasing[i]]
+            text = sample[0]
             text_padded[i, :text.size(0)] = text
+            if len(sample) >= 3:
+                speaker_ids[i] = sample[2]
 
         # Right zero-pad mel-spec
         num_mels = batch[0][1].size(0)
@@ -108,4 +131,4 @@ class TextMelCollate():
             output_lengths[i] = mel.size(1)
 
         return text_padded, input_lengths, mel_padded, gate_padded, \
-            output_lengths
+            output_lengths, speaker_ids

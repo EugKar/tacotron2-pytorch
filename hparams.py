@@ -28,6 +28,7 @@ def create_hparams(hparams_string=None, verbose=False):
         training_files='filelists/ljs_audio_text_train_filelist.txt',
         validation_files='filelists/ljs_audio_text_val_filelist.txt',
         text_cleaners=['english_cleaners'],
+        speakers_count=247,
 
         ################################
         # Audio Parameters             #
@@ -73,6 +74,23 @@ def create_hparams(hparams_string=None, verbose=False):
         postnet_embedding_dim=512,
         postnet_kernel_size=5,
         postnet_n_convolutions=5,
+
+        # Latent encoder parameters
+        use_latent=True,
+        use_observed=True,
+        latent_n_convolutions=2,
+        latent_embedding_dim=512,
+        latent_kernel_size=3,
+        latent_n_rnns=2,
+        latent_rnn_dim=512,
+        latent_y_output_dim=10,
+        latent_z_output_dim=16,
+        observed_y_output_dim=247,
+        observed_z_output_dim=16,
+        latent_logvar_init=-2,
+        latent_logvar_min=-4,
+        observed_logvar_init=-4,
+        observed_logvar_min=-8,
 
         ################################
         # Optimization Hyperparameters #

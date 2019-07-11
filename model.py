@@ -3,6 +3,8 @@ import torch
 from torch.autograd import Variable
 from torch import nn
 from torch.nn import functional as F
+from torch.distributions import MultivariateNormal
+import numpy as np
 from layers import ConvNorm, LinearNorm
 from utils import to_gpu, get_mask_from_lengths
 
@@ -229,7 +231,7 @@ class Decoder(nn.Module):
             hparams.attention_location_kernel_size)
 
         self.decoder_rnn = nn.LSTMCell(
-            hparams.attention_rnn_dim + hparams.encoder_embedding_dim,
+            hparams.attention_rnn_dim + hparams.encoder_embedding_dim + hparams.latent_z_output_dim + hparams.observed_z_output_dim,
             hparams.decoder_rnn_dim, 1)
 
         self.linear_projection = LinearNorm(
@@ -337,7 +339,7 @@ class Decoder(nn.Module):
 
         return mel_outputs, gate_outputs, alignments
 
-    def decode(self, decoder_input):
+    def decode(self, decoder_input, z_latent, z_observed):
         """ Decoder step using stored states, attention and memory
         PARAMS
         ------
@@ -364,7 +366,7 @@ class Decoder(nn.Module):
 
         self.attention_weights_cum += self.attention_weights
         decoder_input = torch.cat(
-            (self.attention_hidden, self.attention_context), -1)
+            (self.attention_hidden, self.attention_context, z_latent, z_observed), -1)
         self.decoder_hidden, self.decoder_cell = self.decoder_rnn(
             decoder_input, (self.decoder_hidden, self.decoder_cell))
         self.decoder_hidden = F.dropout(
@@ -378,7 +380,7 @@ class Decoder(nn.Module):
         gate_prediction = self.gate_layer(decoder_hidden_attention_context)
         return decoder_output, gate_prediction, self.attention_weights
 
-    def forward(self, memory, decoder_inputs, memory_lengths):
+    def forward(self, memory, decoder_inputs, memory_lengths, z_latent, z_observed):
         """ Decoder forward pass for training
         PARAMS
         ------
@@ -405,7 +407,7 @@ class Decoder(nn.Module):
         while len(mel_outputs) < decoder_inputs.size(0) - 1:
             decoder_input = decoder_inputs[len(mel_outputs)]
             mel_output, gate_output, attention_weights = self.decode(
-                decoder_input)
+                decoder_input, z_latent, z_observed)
             mel_outputs += [mel_output.squeeze(1)]
             gate_outputs += [gate_output.squeeze()]
             alignments += [attention_weights]
@@ -415,7 +417,7 @@ class Decoder(nn.Module):
 
         return mel_outputs, gate_outputs, alignments
 
-    def inference(self, memory):
+    def inference(self, memory, z_latent, z_observed):
         """ Decoder inference
         PARAMS
         ------
@@ -434,7 +436,7 @@ class Decoder(nn.Module):
         mel_outputs, gate_outputs, alignments = [], [], []
         while True:
             decoder_input = self.prenet(decoder_input)
-            mel_output, gate_output, alignment = self.decode(decoder_input)
+            mel_output, gate_output, alignment = self.decode(decoder_input, z_latent, z_observed)
 
             mel_outputs += [mel_output.squeeze(1)]
             gate_outputs += [gate_output]
@@ -452,6 +454,79 @@ class Decoder(nn.Module):
             mel_outputs, gate_outputs, alignments)
 
         return mel_outputs, gate_outputs, alignments
+
+class LatentEncoder(nn.Module):
+    def __init__(self, hparams, output_dim):
+        super(LatentEncoder, self).__init__()
+        self.convolutions = nn.ModuleList()
+
+        self.convolutions.append(
+            nn.Sequential(
+                ConvNorm(hparams.n_mel_channels, hparams.latent_embedding_dim,
+                         kernel_size=hparams.latent_kernel_size, stride=1,
+                         padding=int((hparams.latent_kernel_size - 1) / 2),
+                         dilation=1, w_init_gain='tanh'),
+                nn.BatchNorm1d(hparams.latent_embedding_dim))
+        )
+
+        for i in range(1, hparams.latent_n_convolutions):
+            self.convolutions.append(
+                nn.Sequential(
+                    ConvNorm(hparams.latent_embedding_dim,
+                             hparams.latent_embedding_dim,
+                             kernel_size=hparams.latent_kernel_size, stride=1,
+                             padding=int((hparams.latent_kernel_size - 1) / 2),
+                             dilation=1, w_init_gain='tanh'),
+                    nn.BatchNorm1d(hparams.latent_embedding_dim))
+            )
+
+        self.lstm = nn.LSTM(hparams.latent_embedding_dim,
+                            int(hparams.latent_rnn_dim / 2), hparams.latent_n_rnns,
+                            batch_first=True, bidirectional=True)
+
+        self.linear_projection = LinearNorm(hparams.latent_rnn_dim, output_dim)
+
+    def forward(self, x, input_lengths):
+        # x = x.transpose(1, 2)   # (B, T_out, n_mel_channels) -> (B, n_mel_channels, T_out)
+        for conv in self.convolutions:
+            x = F.dropout(F.relu(conv(x)), 0.5, self.training)
+        x = x.transpose(1, 2)   # (B, n_mel_channels, T_out) -> (B, T_out, latent_embedding_dim)
+
+        input_lengths_sorted, inds = input_lengths.sort(dim=0, descending=True)
+        gather_inds = inds.unsqueeze(1).repeat([1, x.size()[1]]).unsqueeze(2).repeat([1, 1, x.size()[2]])
+        x_sorted = x.gather(0, gather_inds)
+
+        # pytorch tensor are not reversible, hence the conversion
+        input_lengths_sorted = input_lengths_sorted.cpu().numpy()
+        x_sorted = nn.utils.rnn.pack_padded_sequence(
+            x_sorted, input_lengths_sorted, batch_first=True)
+
+        self.lstm.flatten_parameters()
+        outputs, _ = self.lstm(x_sorted)
+
+        outputs, _ = nn.utils.rnn.pad_packed_sequence(
+            outputs, batch_first=True)
+
+        outputs = self.linear_projection(outputs.mean(dim=1))
+
+        outputs_unsorted = torch.zeros_like(outputs)
+        scatter_inds = inds.unsqueeze(1).repeat([1, outputs.size()[1]])
+        outputs_unsorted.scatter_(0, scatter_inds, outputs)
+
+        return outputs_unsorted
+
+    def inference(self, x):
+        # x = x.transpose(1, 2)   # (B, T_out, n_mel_channels) -> (B, n_mel_channels, T_out)
+        for conv in self.convolutions:
+            x = F.dropout(F.relu(conv(x)), 0.5, self.training)
+        x = x.transpose(1, 2)   # (B, n_mel_channels, T_out) -> (B, T_out, n_mel_channels)
+
+        self.lstm.flatten_parameters()
+        outputs, _ = self.lstm(x)
+
+        outputs = torch.mean(outputs, dim=1)
+        outputs = self.linear_projection(outputs)
+        return outputs
 
 
 class Tacotron2(nn.Module):
@@ -496,7 +571,7 @@ class Tacotron2(nn.Module):
 
         return outputs
 
-    def forward(self, inputs):
+    def forward(self, inputs, z_latent, z_observed):
         text_inputs, text_lengths, mels, max_len, output_lengths = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
@@ -505,7 +580,8 @@ class Tacotron2(nn.Module):
         encoder_outputs = self.encoder(embedded_inputs, text_lengths)
 
         mel_outputs, gate_outputs, alignments = self.decoder(
-            encoder_outputs, mels, memory_lengths=text_lengths)
+            encoder_outputs, mels, memory_lengths=text_lengths,
+            z_latent=z_latent, z_observed=z_observed)
 
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
@@ -514,11 +590,11 @@ class Tacotron2(nn.Module):
             [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
             output_lengths)
 
-    def inference(self, inputs):
+    def inference(self, inputs, z_latent, z_observed):
         embedded_inputs = self.embedding(inputs).transpose(1, 2)
         encoder_outputs = self.encoder.inference(embedded_inputs)
         mel_outputs, gate_outputs, alignments = self.decoder.inference(
-            encoder_outputs)
+            encoder_outputs, z_latent, z_observed)
 
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
@@ -527,3 +603,50 @@ class Tacotron2(nn.Module):
             [mel_outputs, mel_outputs_postnet, gate_outputs, alignments])
 
         return outputs
+
+class VAE(nn.Module):
+    def __init__(self, hparams):
+        super(VAE, self).__init__()
+        y_dim, z_dim = hparams.latent_y_output_dim, hparams.latent_z_output_dim
+        self.latent_prior_mu = nn.Parameter(torch.zeros((y_dim, z_dim), requires_grad=True))
+        self.latent_prior_logvar = nn.Parameter(torch.ones((y_dim, z_dim), requires_grad=True) * hparams.latent_logvar_init)
+        y_dim, z_dim = hparams.observed_y_output_dim, hparams.observed_z_output_dim
+        self.observed_prior_mu = nn.Parameter(torch.zeros((y_dim, z_dim), requires_grad=True))
+        self.observed_prior_logvar = nn.Parameter(torch.ones((y_dim, z_dim), requires_grad=True) * hparams.observed_logvar_init)
+
+        self.latent_z_mu = LatentEncoder(hparams, hparams.latent_z_output_dim)
+        self.latent_z_logvar = LatentEncoder(hparams, hparams.latent_z_output_dim)
+        self.observed_z_mu = LatentEncoder(hparams, hparams.observed_z_output_dim)
+        self.observed_z_logvar = LatentEncoder(hparams, hparams.observed_z_output_dim)
+
+        self.synthesizer = Tacotron2(hparams)
+
+    def parse_batch(self, batch):
+        text_padded, input_lengths, mel_padded, gate_padded, \
+            output_lengths, speaker_ids = batch
+        synthesizer_batch = self.synthesizer.parse_batch(batch[:-1])
+        speaker_ids = to_gpu(speaker_ids).long()
+
+        return synthesizer_batch, speaker_ids
+
+    def forward(self, inputs):
+        text_inputs, text_lengths, mels, max_len, output_lengths = inputs
+        text_lengths, output_lengths = text_lengths.data, output_lengths.data
+
+        latent_z_mu = self.latent_z_mu(mels, output_lengths)
+        latent_z_logvar = self.latent_z_logvar(mels, output_lengths)
+
+        observed_z_mu = self.observed_z_mu(mels, output_lengths)
+        observed_z_logvar = self.observed_z_logvar(mels, output_lengths)
+
+        z_latent = MultivariateNormal(latent_z_mu, latent_z_logvar.exp().diag_embed()).rsample()
+        z_observed = MultivariateNormal(observed_z_mu, observed_z_logvar.exp().diag_embed()).rsample()
+
+        return (self.synthesizer(inputs, z_latent, z_observed),
+            (latent_z_mu, latent_z_logvar),
+            (observed_z_mu, observed_z_logvar),
+            (self.latent_prior_mu, self.latent_prior_logvar),
+            (self.observed_prior_mu, self.observed_prior_logvar))
+
+    def inference(self, inputs, z_latent, z_observed):
+        return self.synthesizer.inference(inputs, z_latent, z_observed)
