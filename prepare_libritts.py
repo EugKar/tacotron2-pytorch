@@ -43,6 +43,9 @@ def main(args):
             fid.write(f'{item[0]}|{item[1]}|{item[2]}\n')
     val_file = out_dir / 'libritts_audio_text_val_filelist.txt'
     val_set = parse_set(root_dir / 'dev-clean', speakers_vocab)
+    dev_size = int(args.dev_size)
+    if dev_size > 0:
+        val_set = val_set[:dev_size]
     with open(val_file, 'w') as fid:
         for item in val_set:
             fid.write(f'{item[0]}|{item[1]}|{item[2]}\n')
@@ -54,5 +57,6 @@ if __name__ == '__main__':
     parser = ArgumentParser()
     parser.add_argument('--libritts_path', type=str, help='LibriTTS path.')
     parser.add_argument('--out_path', type=str, help='Directory for output index.')
+    parser.add_argument('--dev_size', type=int, default=-1, help='Dev set size, -1 for the whole dev set')
     args = parser.parse_args()
     main(args)
