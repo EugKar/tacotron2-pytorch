@@ -612,10 +612,10 @@ class VAE(nn.Module):
         super(VAE, self).__init__()
         y_dim, z_dim = hparams.latent_y_output_dim, hparams.latent_z_output_dim
         self.latent_prior_mu = nn.Parameter(torch.zeros((y_dim, z_dim), requires_grad=True))
-        self.latent_prior_logvar = nn.Parameter(torch.ones((y_dim, z_dim), requires_grad=True) * hparams.latent_logvar_init)
+        self.latent_prior_sigma = nn.Parameter(torch.ones((y_dim, z_dim), requires_grad=True) * hparams.latent_sigma_init)
         y_dim, z_dim = hparams.observed_y_output_dim, hparams.observed_z_output_dim
         self.observed_prior_mu = nn.Parameter(torch.zeros((y_dim, z_dim), requires_grad=True))
-        self.observed_prior_logvar = nn.Parameter(torch.ones((y_dim, z_dim), requires_grad=True) * hparams.observed_logvar_init)
+        self.observed_prior_sigma = nn.Parameter(torch.ones((y_dim, z_dim), requires_grad=True) * hparams.observed_sigma_init)
 
         self.latent_z = LatentEncoder(hparams, hparams.latent_z_output_dim)
         self.observed_z = LatentEncoder(hparams, hparams.observed_z_output_dim)
@@ -649,8 +649,8 @@ class VAE(nn.Module):
         return (self.synthesizer(inputs, z_latent, z_observed),
             (latent_z_mu, latent_z_logvar),
             (observed_z_mu, observed_z_logvar),
-            (self.latent_prior_mu, self.latent_prior_logvar),
-            (self.observed_prior_mu, self.observed_prior_logvar))
+            (self.latent_prior_mu, self.latent_prior_sigma),
+            (self.observed_prior_mu, self.observed_prior_sigma))
 
     def inference(self, inputs, z_latent, z_observed):
         return self.synthesizer.inference(inputs, z_latent, z_observed)

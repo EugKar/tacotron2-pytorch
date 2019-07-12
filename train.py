@@ -22,17 +22,17 @@ multiprocessing.set_start_method('spawn', True)
 class VarianceClipper(object):
 
     def __init__(self, hparams):
-        self.latent_logvar_min = hparams.latent_logvar_min
-        self.observed_logvar_min = hparams.observed_logvar_min
+        self.latent_sigma_min = hparams.latent_sigma_min
+        self.observed_sigma_min = hparams.observed_sigma_min
 
     def __call__(self, module):
         # filter the variables to get the ones you want
-        if hasattr(module, 'latent_prior_logvar'):
-            param = module.latent_prior_logvar
-            param = param.clamp(min=self.latent_logvar_min)
-        if hasattr(module, 'observed_prior_logvar'):
-            param = module.observed_prior_logvar
-            param = param.clamp(min=self.observed_logvar_min)
+        if hasattr(module, 'latent_prior_sigma'):
+            param = module.latent_prior_sigma
+            param = param.clamp(min=self.latent_sigma_min)
+        if hasattr(module, 'observed_prior_sigma'):
+            param = module.observed_prior_sigma
+            param = param.clamp(min=self.observed_sigma_min)
 
 def reduce_tensor(tensor, n_gpus):
     rt = tensor.clone()

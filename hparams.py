@@ -1,4 +1,5 @@
 import tensorflow as tf
+import math
 from text import symbols
 
 
@@ -87,10 +88,10 @@ def create_hparams(hparams_string=None, verbose=False):
         latent_z_output_dim=16,
         observed_y_output_dim=247,
         observed_z_output_dim=16,
-        latent_logvar_init=-2,
-        latent_logvar_min=-4,
-        observed_logvar_init=-4,
-        observed_logvar_min=-8,
+        latent_sigma_init=1, #math.exp(-1),
+        latent_sigma_min=math.exp(-1), #math.exp(-2),
+        observed_sigma_init=math.exp(-2),
+        observed_sigma_min=math.exp(-4),
 
         ################################
         # Optimization Hyperparameters #
