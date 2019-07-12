@@ -484,7 +484,8 @@ class LatentEncoder(nn.Module):
                             int(hparams.latent_rnn_dim / 2), hparams.latent_n_rnns,
                             batch_first=True, bidirectional=True)
 
-        self.linear_projection = LinearNorm(hparams.latent_rnn_dim, output_dim)
+        self.mu_linear_projection = LinearNorm(hparams.latent_rnn_dim, output_dim)
+        self.logvar_linear_projection = LinearNorm(hparams.latent_rnn_dim, output_dim)
 
     def forward(self, x, input_lengths):
         # x = x.transpose(1, 2)   # (B, T_out, n_mel_channels) -> (B, n_mel_channels, T_out)
@@ -507,13 +508,15 @@ class LatentEncoder(nn.Module):
         outputs, _ = nn.utils.rnn.pad_packed_sequence(
             outputs, batch_first=True)
 
-        outputs = self.linear_projection(outputs.mean(dim=1))
+        outputs = outputs.mean(dim=1)
+        mu, logvar = self.mu_linear_projection(outputs), self.logvar_linear_projection(outputs)
 
-        outputs_unsorted = torch.zeros_like(outputs)
-        scatter_inds = inds.unsqueeze(1).repeat([1, outputs.size()[1]])
-        outputs_unsorted.scatter_(0, scatter_inds, outputs)
+        mu_unsorted, logvar_unsorted = torch.zeros_like(mu), torch.zeros_like(logvar)
+        scatter_inds = inds.unsqueeze(1).repeat([1, mu.size()[1]])
+        mu_unsorted.scatter_(0, scatter_inds, mu)
+        logvar_unsorted.scatter_(0, scatter_inds, logvar)
 
-        return outputs_unsorted
+        return mu_unsorted, logvar_unsorted
 
     def inference(self, x):
         # x = x.transpose(1, 2)   # (B, T_out, n_mel_channels) -> (B, n_mel_channels, T_out)
@@ -614,12 +617,15 @@ class VAE(nn.Module):
         self.observed_prior_mu = nn.Parameter(torch.zeros((y_dim, z_dim), requires_grad=True))
         self.observed_prior_logvar = nn.Parameter(torch.ones((y_dim, z_dim), requires_grad=True) * hparams.observed_logvar_init)
 
-        self.latent_z_mu = LatentEncoder(hparams, hparams.latent_z_output_dim)
-        self.latent_z_logvar = LatentEncoder(hparams, hparams.latent_z_output_dim)
-        self.observed_z_mu = LatentEncoder(hparams, hparams.observed_z_output_dim)
-        self.observed_z_logvar = LatentEncoder(hparams, hparams.observed_z_output_dim)
+        self.latent_z = LatentEncoder(hparams, hparams.latent_z_output_dim)
+        self.observed_z = LatentEncoder(hparams, hparams.observed_z_output_dim)
 
         self.synthesizer = Tacotron2(hparams)
+
+        torch.nn.init.xavier_uniform_(
+            self.latent_prior_mu, gain=torch.nn.init.calculate_gain('linear'))
+        torch.nn.init.xavier_uniform_(
+            self.observed_prior_mu, gain=torch.nn.init.calculate_gain('linear'))
 
     def parse_batch(self, batch):
         text_padded, input_lengths, mel_padded, gate_padded, \
@@ -633,11 +639,9 @@ class VAE(nn.Module):
         text_inputs, text_lengths, mels, max_len, output_lengths = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
-        latent_z_mu = self.latent_z_mu(mels, output_lengths)
-        latent_z_logvar = self.latent_z_logvar(mels, output_lengths)
+        latent_z_mu, latent_z_logvar = self.latent_z(mels, output_lengths)
 
-        observed_z_mu = self.observed_z_mu(mels, output_lengths)
-        observed_z_logvar = self.observed_z_logvar(mels, output_lengths)
+        observed_z_mu, observed_z_logvar = self.observed_z(mels, output_lengths)
 
         z_latent = MultivariateNormal(latent_z_mu, latent_z_logvar.exp().diag_embed()).rsample()
         z_observed = MultivariateNormal(observed_z_mu, observed_z_logvar.exp().diag_embed()).rsample()
