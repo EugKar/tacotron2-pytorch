@@ -88,7 +88,7 @@ def create_hparams(hparams_string=None, verbose=False):
         latent_z_output_dim=16,
         observed_y_output_dim=247,
         observed_z_output_dim=16,
-        latent_sigma_init=math.exp(-0.5),
+        latent_sigma_init=math.exp(-0.75),
         latent_sigma_min=math.exp(-2),
         observed_sigma_init=math.exp(-2),
         observed_sigma_min=math.exp(-4),

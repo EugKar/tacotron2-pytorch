@@ -622,10 +622,8 @@ class VAE(nn.Module):
 
         self.synthesizer = Tacotron2(hparams)
 
-        torch.nn.init.xavier_uniform_(
-            self.latent_prior_mu, gain=torch.nn.init.calculate_gain('linear'))
-        torch.nn.init.xavier_uniform_(
-            self.observed_prior_mu, gain=torch.nn.init.calculate_gain('linear'))
+        torch.nn.init.uniform_(self.latent_prior_mu, a=-0.5, b=0.5)
+        torch.nn.init.uniform_(self.observed_prior_mu, a=-0.5, b=0.5)
 
     def parse_batch(self, batch):
         text_padded, input_lengths, mel_padded, gate_padded, \

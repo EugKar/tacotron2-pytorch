@@ -24,7 +24,10 @@ class Tacotron2Logger(SummaryWriter):
         # plot distribution of parameters
         for tag, value in model.named_parameters():
             tag = tag.replace('.', '/')
-            self.add_histogram(tag, value.data.cpu().numpy(), iteration)
+            try:
+                self.add_histogram(tag, value.data.cpu().numpy(), iteration)
+            except ValueError:
+                continue
 
         # plot alignment, mel target and predicted, gate target and predicted
         idx = random.randint(0, alignments.size(0) - 1)

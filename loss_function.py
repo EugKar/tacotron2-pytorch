@@ -43,7 +43,7 @@ class VAELoss(nn.Module):
         z_sample = q_z_x.rsample().unsqueeze(1).repeat([1, k, 1]) # B x K x D
         p_z_y = MultivariateNormal(z_prior_mu,
             scale_tril=z_prior_sigma.diag_embed())
-        y_probs = p_z_y.log_prob(z_sample).exp()
+        y_probs = p_z_y.log_prob(z_sample).exp() * 1e6  # Multiply by large number to avoid dividing by zero
         q_y_x = y_probs / y_probs.sum(dim=1, keepdim=True) #.add_(EPS)
         return q_y_x
 
