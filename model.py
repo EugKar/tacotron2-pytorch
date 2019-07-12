@@ -527,9 +527,9 @@ class LatentEncoder(nn.Module):
         self.lstm.flatten_parameters()
         outputs, _ = self.lstm(x)
 
-        outputs = torch.mean(outputs, dim=1)
-        outputs = self.linear_projection(outputs)
-        return outputs
+        outputs = outputs.mean(dim=1)
+        mu, logvar = self.mu_linear_projection(outputs), self.logvar_linear_projection(outputs)
+        return mu, logvar
 
 
 class Tacotron2(nn.Module):
