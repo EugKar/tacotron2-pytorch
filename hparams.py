@@ -90,8 +90,8 @@ def create_hparams(hparams_string=None, verbose=False):
         observed_z_output_dim=16,
         latent_sigma_init=1, #math.exp(-1),
         latent_sigma_min=math.exp(-1), #math.exp(-2),
-        observed_sigma_init=math.exp(-2),
-        observed_sigma_min=math.exp(-4),
+        observed_sigma_init=math.exp(-1),#math.exp(-2),
+        observed_sigma_min=math.exp(-2),#math.exp(-4),
 
         ################################
         # Optimization Hyperparameters #
