@@ -223,6 +223,9 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
             iteration += 1  # next iteration is iteration + 1
             epoch_offset = max(0, int(iteration / len(train_loader)))
 
+    if hparams.autograd_detect_anomalies:
+        torch.autograd.set_detect_anomaly(True)
+
     model.train()
     is_overflow = False
     # ================ MAIN TRAINNIG LOOP! ===================
