@@ -22,12 +22,11 @@ class Tacotron2Loss(nn.Module):
         gate_loss = nn.BCEWithLogitsLoss()(gate_out, gate_target)
         return mel_loss, gate_loss
 
-class VAELoss(nn.Module):
+class LatentClassProb(nn.Module):
     def __init__(self):
-        super(VAELoss, self).__init__()
-        self.tacotron2loss = Tacotron2Loss()
+        super(LatentClassProb, self).__init__()
 
-    def get_q_y_x(self, z_mu, z_logvar, z_prior_mu, z_prior_sigma):
+    def forward(self, z_mu, z_logvar, z_prior_mu, z_prior_sigma):
         '''
         Calculate q(y_l|X) using Monte-Carlo sampling (1 sample)
         Input dimensions:
@@ -43,9 +42,20 @@ class VAELoss(nn.Module):
         z_sample = q_z_x.rsample().unsqueeze(1).repeat([1, k, 1]) # B x K x D
         p_z_y = MultivariateNormal(z_prior_mu,
             scale_tril=z_prior_sigma.diag_embed())
-        y_probs = p_z_y.log_prob(z_sample).exp() * 1e6  # Multiply by large number to avoid dividing by zero
-        q_y_x = y_probs / y_probs.sum(dim=1, keepdim=True) #.add_(EPS)
+        y_probs = p_z_y.log_prob(z_sample).exp()
+
+        # Trick for avoiding NaN values and gradients
+        mean_prob = y_probs.mean(dim=1, keepdim=True).detach_()
+        y_probs = y_probs / mean_prob
+
+        q_y_x = y_probs / y_probs.sum(dim=1, keepdim=True)
         return q_y_x
+
+class VAELoss(nn.Module):
+    def __init__(self):
+        super(VAELoss, self).__init__()
+        self.tacotron2loss = Tacotron2Loss()
+        self.q_y_x = LatentClassProb()
 
     def kl_multivar_norm_diag(self, mu0, logvar0, mu1, logvar1):
         '''
@@ -80,7 +90,7 @@ class VAELoss(nn.Module):
         observed_prior_mu, observed_prior_sigma = observed_prior_params
 
         # q(y_l | X), dimensions: B x K_l
-        q_yl_x = self.get_q_y_x(latent_mu, latent_logvar, latent_prior_mu,
+        q_yl_x = self.q_y_x(latent_mu, latent_logvar, latent_prior_mu,
                                latent_prior_sigma)
 
         # p(z_o | y_o) parameters, dimensions: B x D_o
