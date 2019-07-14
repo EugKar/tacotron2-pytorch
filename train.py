@@ -30,9 +30,11 @@ class VarianceClipper(object):
         if hasattr(module, 'latent_prior_sigma'):
             param = module.latent_prior_sigma
             param = param.clamp(min=self.latent_sigma_min)
+            module.latent_prior_sigma.data = param
         if hasattr(module, 'observed_prior_sigma'):
             param = module.observed_prior_sigma
             param = param.clamp(min=self.observed_sigma_min)
+            module.observed_prior_sigma.data = param
 
 def reduce_tensor(tensor, n_gpus):
     rt = tensor.clone()

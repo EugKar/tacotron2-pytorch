@@ -117,4 +117,6 @@ class VAELoss(nn.Module):
         kl_y_latent = (q_yl_x * (q_yl_x.add_(EPS).log() + math.log(k_l))).sum(dim=1)
 
         elbo = mel_loss + kl_z_observed.mean() + (q_yl_x * kl_z_latent).sum(dim=1).mean() + kl_y_latent.mean()
+        if torch.isnan(elbo).any() or torch.isinf(elbo).any():
+            raise ValueError('ELBO is Inf or NaN')
         return elbo, mel_loss, gate_loss
