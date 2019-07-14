@@ -42,11 +42,12 @@ class LatentClassProb(nn.Module):
         z_sample = q_z_x.rsample().unsqueeze(1).repeat([1, k, 1]) # B x K x D
         p_z_y = MultivariateNormal(z_prior_mu,
             scale_tril=z_prior_sigma.diag_embed())
-        y_probs = p_z_y.log_prob(z_sample).exp()
+        y_log_probs = p_z_y.log_prob(z_sample)
 
         # Trick for avoiding NaN values and gradients
-        mean_prob = y_probs.mean(dim=1, keepdim=True).detach_()
-        y_probs = y_probs / mean_prob
+        mean_prob = y_log_probs.mean(dim=1, keepdim=True).detach_()
+        y_log_probs = y_log_probs - mean_prob
+        y_probs = y_log_probs.exp()
 
         q_y_x = y_probs / y_probs.sum(dim=1, keepdim=True)
         return q_y_x
