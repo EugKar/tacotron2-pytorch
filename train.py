@@ -248,8 +248,12 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
             loss = elbo + gate_loss
             if hparams.distributed_run:
                 reduced_loss = reduce_tensor(loss.data, n_gpus).item()
+                reduced_mel_loss = reduce_tensor(mel_loss.data, n_gpus).item()
+                reduced_elbo = reduce_tensor(elbo.data, n_gpus).item()
             else:
                 reduced_loss = loss.item()
+                reduced_mel_loss = mel_loss.item()
+                reduced_elbo = elbo.item()
             if hparams.fp16_run:
                 with amp.scale_loss(loss, optimizer) as scaled_loss:
                     scaled_loss.backward()
@@ -270,10 +274,10 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
             if not is_overflow and rank == 0:
                 duration = time.perf_counter() - start
-                print("Train loss {} {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(
-                    iteration, reduced_loss, grad_norm, duration))
+                print("Train loss {} {:.6f} mel loss {:.6f} ELBO {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(
+                    iteration, reduced_loss, reduced_mel_loss, reduced_elbo, grad_norm, duration))
                 logger.log_training(
-                    reduced_loss, grad_norm, learning_rate, duration, iteration)
+                    reduced_loss, reduced_mel_loss, reduced_elbo, grad_norm, learning_rate, duration, iteration)
 
             if not is_overflow and (iteration % hparams.iters_per_checkpoint == 0):
                 validate(model, val_criterion, valset, iteration,

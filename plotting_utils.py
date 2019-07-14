@@ -8,6 +8,11 @@ def save_figure_to_numpy(fig):
     # save it to a numpy array.
     data = np.fromstring(fig.canvas.tostring_rgb(), dtype=np.uint8, sep='')
     data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,))
+    idx = data.shape.index(3)
+    if idx == 0:
+        data = np.transpose(data, [1, 2, 0])
+    elif idx == 1:
+        data = np.transpose(data, [0, 2, 1])
     return data
 
 
