@@ -45,8 +45,8 @@ class LatentClassProb(nn.Module):
         y_log_probs = p_z_y.log_prob(z_sample)
 
         # Trick for avoiding NaN values and gradients
-        mean_prob = y_log_probs.mean(dim=1, keepdim=True).detach_()
-        y_log_probs = y_log_probs - mean_prob
+        max_prob = y_log_probs.max(dim=1, keepdim=True).values.detach_()
+        y_log_probs = y_log_probs - max_prob
         y_probs = y_log_probs.exp()
 
         q_y_x = y_probs / y_probs.sum(dim=1, keepdim=True)
