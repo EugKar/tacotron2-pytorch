@@ -243,8 +243,17 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
             (y_pred, latent_params, observed_params,
              latent_prior_params, observed_prior_params) = model(x)
 
-            elbo, mel_loss, gate_loss = criterion(y_pred, latent_params, observed_params,
-                latent_prior_params, observed_prior_params, speaker_ids, y)
+            try:
+                elbo, mel_loss, gate_loss = criterion(y_pred, latent_params, observed_params,
+                    latent_prior_params, observed_prior_params, speaker_ids, y)
+            except ValueError:
+                if rank == 0:
+                    checkpoint_path = os.path.join(
+                        output_directory, "checkpoint_{}".format(iteration))
+                    save_checkpoint(model, optimizer, learning_rate, iteration,
+                                    checkpoint_path)
+                raise
+
             loss = elbo + gate_loss
             if hparams.distributed_run:
                 reduced_loss = reduce_tensor(loss.data, n_gpus).item()
