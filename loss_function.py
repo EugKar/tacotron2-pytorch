@@ -93,6 +93,8 @@ class VAELoss(nn.Module):
         # q(y_l | X), dimensions: B x K_l
         q_yl_x = self.q_y_x(latent_mu, latent_logvar, latent_prior_mu,
                                latent_prior_sigma)
+        if q_yl_x.isnan().any() or q_yl_x.isinf().any():
+            raise ValueError('q_y_x is inf or NaN')
 
         # p(z_o | y_o) parameters, dimensions: B x D_o
         d_o = observed_mu.size()[1]
@@ -104,6 +106,8 @@ class VAELoss(nn.Module):
         kl_z_observed = self.kl_multivar_norm_diag(
             observed_mu, observed_logvar,
             observed_prior_mu_yo, observed_prior_sigma_yo.pow(2).log())
+        if kl_z_observed.isnan().any() or kl_z_observed.isinf().any():
+            raise ValueError('kl_z_observed is inf or NaN')
 
         # D_KL(q(z_l | X) || p(z_l || y_l)), dimensions: B x K_l
         k_l = latent_prior_mu.size()[0]
@@ -113,9 +117,13 @@ class VAELoss(nn.Module):
             latent_logvar.unsqueeze(1).repeat([1, k_l, 1]),
             latent_prior_mu.unsqueeze(0).repeat([b, 1, 1]),
             latent_prior_sigma.unsqueeze(0).repeat([b, 1, 1]).pow(2).log())
+        if kl_z_latent.isnan().any() or kl_z_latent.isinf().any():
+            raise ValueError('kl_z_latent is inf or NaN')
 
         # D_KL(q(y_l | X) || p(y_l)), dimensions: B
         kl_y_latent = (q_yl_x * (q_yl_x.add_(EPS).log() + math.log(k_l))).sum(dim=1)
+        if kl_y_latent.isnan().any() or kl_y_latent.isinf().any():
+            raise ValueError('kl_y_latent is inf or NaN')
 
         elbo = mel_loss + kl_z_observed.mean() + (q_yl_x * kl_z_latent).sum(dim=1).mean() + kl_y_latent.mean()
         # if torch.isnan(elbo).any() or torch.isinf(elbo).any():
