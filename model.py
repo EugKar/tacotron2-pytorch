@@ -235,7 +235,8 @@ class Decoder(nn.Module):
             hparams.decoder_rnn_dim, 1)
 
         self.linear_projection = LinearNorm(
-            hparams.decoder_rnn_dim + hparams.encoder_embedding_dim,
+            # hparams.decoder_rnn_dim + hparams.encoder_embedding_dim,
+            hparams.decoder_rnn_dim + hparams.attention_rnn_dim + hparams.encoder_embedding_dim + hparams.latent_z_output_dim + hparams.observed_z_output_dim,
             hparams.n_mel_channels * hparams.n_frames_per_step)
 
         self.gate_layer = LinearNorm(
@@ -373,11 +374,17 @@ class Decoder(nn.Module):
             self.decoder_hidden, self.p_decoder_dropout, self.training)
 
         decoder_hidden_attention_context = torch.cat(
-            (self.decoder_hidden, self.attention_context), dim=1)
+            (self.decoder_hidden,
+            #  self.attention_context
+            decoder_input
+             ), dim=1)
         decoder_output = self.linear_projection(
             decoder_hidden_attention_context)
 
-        gate_prediction = self.gate_layer(decoder_hidden_attention_context)
+        decoder_hidden_attention_context_gate = torch.cat(
+            (self.decoder_hidden, self.attention_context), dim=1)
+
+        gate_prediction = self.gate_layer(decoder_hidden_attention_context_gate)
         return decoder_output, gate_prediction, self.attention_weights
 
     def forward(self, memory, decoder_inputs, memory_lengths, z_latent, z_observed):
