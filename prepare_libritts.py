@@ -41,6 +41,13 @@ def main(args):
     with open(train_file, 'w') as fid:
         for item in train_set:
             fid.write(f'{item[0]}|{item[1]}|{item[2]}\n')
+    train_path_360 = root_dir / 'train-clean-360'
+    if train_path_360.exists():
+        train_set = parse_set(train_path_360, speakers_vocab)
+        with open(train_file, 'a') as fid:
+            for item in train_set:
+                fid.write(f'{item[0]}|{item[1]}|{item[2]}\n')
+
     val_file = out_dir / 'libritts_audio_text_val_filelist.txt'
     val_set = parse_set(root_dir / 'dev-clean', speakers_vocab)
     dev_size = int(args.dev_size)
