@@ -37,7 +37,7 @@ class LatentClassProb(nn.Module):
         B - batch size, K - numober of mixtures in GMM, D - number of dimensions in the distributions
         '''
         q_z_x = MultivariateNormal(z_mu,
-            covariance_matrix=z_logvar.exp().diag_embed())
+            scale_tril=(0.5 * z_logvar).exp().diag_embed())
         k = z_prior_mu.size()[0]
         z_sample = q_z_x.rsample().unsqueeze(1).repeat([1, k, 1]) # B x K x D
         p_z_y = MultivariateNormal(z_prior_mu,
