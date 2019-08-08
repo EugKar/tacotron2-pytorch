@@ -1,4 +1,3 @@
-import csv
 import re
 from pathlib import Path
 from argparse import ArgumentParser
@@ -7,12 +6,13 @@ def parse_tsv(tsv_path, speakers_vocab=[]):
     ret = []
     wav_dir = tsv_path.parent
     with open(tsv_path, 'r') as fid:
-        reader = csv.reader(fid, dialect='excel-tab')
+        lines = fid.read().strip().split('\n')
         speaker_id = tsv_path.parents[1].name
         if speaker_id not in speakers_vocab:
             speakers_vocab.append(speaker_id)
         speaker_id = speakers_vocab.index(speaker_id)
-        for row in reader:
+        for line in lines:
+            row = line.split('\t')
             audio_path = wav_dir / (row[0] + '.wav')
             label = row[1] if len(row) < 3 else row[2]
             ret.append((audio_path, label, speaker_id))
