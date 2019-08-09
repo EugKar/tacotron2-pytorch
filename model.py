@@ -470,18 +470,19 @@ class LatentEncoder(nn.Module):
         self.convolutions.append(
             nn.Sequential(
                 ConvNorm(hparams.n_mel_channels, hparams.latent_embedding_dim,
-                         kernel_size=hparams.latent_kernel_size, stride=1,
+                         kernel_size=hparams.latent_kernel_size, stride=hparams.latent_stride,
                          padding=int((hparams.latent_kernel_size - 1) / 2),
                          dilation=1, w_init_gain='tanh'),
                 nn.BatchNorm1d(hparams.latent_embedding_dim))
         )
-
+        self.hparams = hparams
         for i in range(1, hparams.latent_n_convolutions):
             self.convolutions.append(
                 nn.Sequential(
                     ConvNorm(hparams.latent_embedding_dim,
                              hparams.latent_embedding_dim,
-                             kernel_size=hparams.latent_kernel_size, stride=1,
+                             kernel_size=hparams.latent_kernel_size,
+                             stride=hparams.latent_stride,
                              padding=int((hparams.latent_kernel_size - 1) / 2),
                              dilation=1, w_init_gain='tanh'),
                     nn.BatchNorm1d(hparams.latent_embedding_dim))
@@ -500,7 +501,12 @@ class LatentEncoder(nn.Module):
             x = F.dropout(F.relu(conv(x)), 0.5, self.training)
         x = x.transpose(1, 2)   # (B, n_mel_channels, T_out) -> (B, T_out, latent_embedding_dim)
 
-        input_lengths_sorted, inds = input_lengths.sort(dim=0, descending=True)
+        conv_length = input_lengths
+        for i in range(self.hparams.latent_n_convolutions):
+            conv_length = torch.div((conv_length + 2 * int((self.hparams.latent_kernel_size - 1) / 2) -
+                (self.hparams.latent_kernel_size - 1) - 1), self.hparams.latent_stride) + 1
+
+        input_lengths_sorted, inds = conv_length.sort(dim=0, descending=True)
         gather_inds = inds.unsqueeze(1).repeat([1, x.size()[1]]).unsqueeze(2).repeat([1, 1, x.size()[2]])
         x_sorted = x.gather(0, gather_inds)
 

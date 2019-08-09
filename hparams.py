@@ -82,6 +82,7 @@ def create_hparams(hparams_string=None, verbose=False):
         latent_n_convolutions=2,
         latent_embedding_dim=512,
         latent_kernel_size=3,
+        latent_stride=1,
         latent_n_rnns=1,
         latent_rnn_dim=512,
         latent_y_output_dim=10,
