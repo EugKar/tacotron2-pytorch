@@ -9,6 +9,7 @@ from distributed import apply_gradient_allreduce
 import torch.distributed as dist
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader
+# from pytorch_memlab import MemReporter
 
 from model import VAE
 from data_utils import TextMelLoader, TextMelCollate
@@ -229,6 +230,8 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     if hparams.autograd_detect_anomalies:
         torch.autograd.set_detect_anomaly(True)
 
+    # reporter = MemReporter(model)
+
     model.train()
     is_overflow = False
     # ================ MAIN TRAINNIG LOOP! ===================
@@ -256,6 +259,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
                 raise
 
             loss = elbo + gate_loss
+            # reporter.report(verbose=True)
             if hparams.distributed_run:
                 reduced_loss = reduce_tensor(loss.data, n_gpus).item()
                 reduced_mel_loss = reduce_tensor(mel_loss.data, n_gpus).item()
@@ -269,6 +273,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
                     scaled_loss.backward()
             else:
                 loss.backward()
+            # reporter.report(verbose=True)
 
             if hparams.fp16_run:
                 grad_norm = torch.nn.utils.clip_grad_norm_(
