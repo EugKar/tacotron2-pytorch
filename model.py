@@ -488,7 +488,7 @@ class LatentEncoder(nn.Module):
                     nn.BatchNorm1d(hparams.latent_embedding_dim))
             )
 
-        self.lstm = nn.LSTM(hparams.latent_embedding_dim,
+        self.gru = nn.GRU(hparams.latent_embedding_dim,
                             int(hparams.latent_rnn_dim / 2), hparams.latent_n_rnns,
                             batch_first=True, bidirectional=True)
 
@@ -515,8 +515,8 @@ class LatentEncoder(nn.Module):
         x_sorted = nn.utils.rnn.pack_padded_sequence(
             x_sorted, input_lengths_sorted, batch_first=True)
 
-        self.lstm.flatten_parameters()
-        outputs, _ = self.lstm(x_sorted)
+        self.gru.flatten_parameters()
+        outputs, _ = self.gru(x_sorted)
 
         outputs, _ = nn.utils.rnn.pad_packed_sequence(
             outputs, batch_first=True)
@@ -537,8 +537,8 @@ class LatentEncoder(nn.Module):
             x = F.dropout(F.relu(conv(x)), 0.5, self.training)
         x = x.transpose(1, 2)   # (B, n_mel_channels, T_out) -> (B, T_out, n_mel_channels)
 
-        self.lstm.flatten_parameters()
-        outputs, _ = self.lstm(x)
+        self.gru.flatten_parameters()
+        outputs, _ = self.gru(x)
 
         outputs = outputs.mean(dim=1)
         mu, logvar = self.mu_linear_projection(outputs), self.logvar_linear_projection(outputs)
