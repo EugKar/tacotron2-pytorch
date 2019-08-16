@@ -234,9 +234,13 @@ class Decoder(nn.Module):
             hparams.attention_rnn_dim + hparams.encoder_embedding_dim + hparams.latent_z_output_dim + hparams.observed_z_output_dim,
             hparams.decoder_rnn_dim, 1)
 
+        self.residual = LinearNorm(hparams.decoder_rnn_dim,
+            hparams.attention_rnn_dim + hparams.encoder_embedding_dim + hparams.latent_z_output_dim + hparams.observed_z_output_dim)
+
         self.linear_projection = LinearNorm(
             # hparams.decoder_rnn_dim + hparams.encoder_embedding_dim,
-            hparams.decoder_rnn_dim + hparams.attention_rnn_dim + hparams.encoder_embedding_dim + hparams.latent_z_output_dim + hparams.observed_z_output_dim,
+            # hparams.decoder_rnn_dim + hparams.attention_rnn_dim + hparams.encoder_embedding_dim + hparams.latent_z_output_dim + hparams.observed_z_output_dim,
+            hparams.attention_rnn_dim + hparams.encoder_embedding_dim + hparams.latent_z_output_dim + hparams.observed_z_output_dim,
             hparams.n_mel_channels * hparams.n_frames_per_step)
 
         self.gate_layer = LinearNorm(
@@ -373,11 +377,14 @@ class Decoder(nn.Module):
         self.decoder_hidden = F.dropout(
             self.decoder_hidden, self.p_decoder_dropout, self.training)
 
-        decoder_hidden_attention_context = torch.cat(
-            (self.decoder_hidden,
-            #  self.attention_context
-            decoder_input
-             ), dim=1)
+        # decoder_hidden_attention_context = torch.cat(
+        #     (self.decoder_hidden,
+        #     #  self.attention_context
+        #     decoder_input
+        #      ), dim=1)
+
+        decoder_hidden_attention_context = F.relu(self.residual(self.decoder_hidden) + decoder_input)
+
         decoder_output = self.linear_projection(
             decoder_hidden_attention_context)
 
