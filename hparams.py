@@ -26,10 +26,10 @@ def create_hparams(hparams_string=None, verbose=False):
         # Data Parameters             #
         ################################
         load_mel_from_disk=False,
-        training_files='filelists/ljs_audio_text_train_filelist.txt',
-        validation_files='filelists/ljs_audio_text_val_filelist.txt',
+        training_files='filelists_libritts/libritts_audio_text_train_filelist.txt',
+        validation_files='filelists_libritts/libritts_audio_text_val_filelist.txt',
         text_cleaners=['english_cleaners'],
-        speakers_count=247,
+        # speakers_count=247,
 
         ################################
         # Audio Parameters             #
@@ -82,7 +82,7 @@ def create_hparams(hparams_string=None, verbose=False):
         latent_n_convolutions=2,
         latent_embedding_dim=512,
         latent_kernel_size=3,
-        latent_stride=1,
+        latent_stride=2,
         latent_n_rnns=1,
         latent_rnn_dim=512,
         latent_y_output_dim=10,

@@ -16,7 +16,7 @@ class TextMelLoader(torch.utils.data.Dataset):
     """
     def __init__(self, audiopaths_and_text, hparams):
         self.audiopaths_and_text = load_filepaths_and_text(audiopaths_and_text)
-        self.speakers_count = hparams.speakers_count
+        # self.speakers_count = hparams.speakers_count
         self.text_cleaners = hparams.text_cleaners
         self.max_wav_value = hparams.max_wav_value
         self.sampling_rate = hparams.sampling_rate
@@ -36,11 +36,8 @@ class TextMelLoader(torch.utils.data.Dataset):
             speaker_id = int(audiopath_and_text[2])
         text = self.get_text(text)
         mel = self.get_mel(audiopath)
-        if self.speakers_count is None:
-            return (text, mel)
-        else:
-            speaker_id = self.get_speaker_id(speaker_id)
-            return (text, mel, speaker_id)
+        speaker_id = self.get_speaker_id(speaker_id)
+        return (text, mel, speaker_id)
 
     def get_mel(self, filename):
         if not self.load_mel_from_disk:
