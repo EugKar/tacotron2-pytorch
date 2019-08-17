@@ -232,48 +232,63 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
     # reporter = MemReporter(model)
 
+    smaller_batch_size = hparams.batch_size // hparams.smaller_batch_count
+
     model.train()
     is_overflow = False
     # ================ MAIN TRAINNIG LOOP! ===================
     for epoch in range(epoch_offset, hparams.epochs):
         print("Epoch: {}".format(epoch))
-        for i, batch in enumerate(train_loader):
+        for i, big_batch in enumerate(train_loader):
             start = time.perf_counter()
             for param_group in optimizer.param_groups:
                 param_group['lr'] = learning_rate
 
             model.zero_grad()
-            (x, y), speaker_ids = model.parse_batch(batch)
-            (y_pred, latent_params, observed_params,
-             latent_prior_params, observed_prior_params) = model(x)
 
-            try:
-                elbo, mel_loss, gate_loss = criterion(y_pred, latent_params, observed_params,
-                    latent_prior_params, observed_prior_params, speaker_ids, y)
-            except ValueError:
-                if rank == 0:
-                    checkpoint_path = os.path.join(
-                        output_directory, "checkpoint_{}".format(iteration))
-                    save_checkpoint(model, optimizer, learning_rate, iteration,
-                                    checkpoint_path)
-                raise
+            batch_start = 0
+            step_elbo, step_mel_loss, step_loss = 0, 0, 0
+            for _ in range(hparams.smaller_batch_count):
+                batch = [t[batch_start:batch_start+smaller_batch_size, ...] for t in big_batch]
+                batch_start += smaller_batch_size
+                (x, y), speaker_ids = model.parse_batch(batch)
+                (y_pred, latent_params, observed_params,
+                latent_prior_params, observed_prior_params) = model(x)
 
-            loss = elbo + gate_loss
-            # reporter.report(verbose=True)
-            if hparams.distributed_run:
-                reduced_loss = reduce_tensor(loss.data, n_gpus).item()
-                reduced_mel_loss = reduce_tensor(mel_loss.data, n_gpus).item()
-                reduced_elbo = reduce_tensor(elbo.data, n_gpus).item()
-            else:
-                reduced_loss = loss.item()
-                reduced_mel_loss = mel_loss.item()
-                reduced_elbo = elbo.item()
-            if hparams.fp16_run:
-                with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
-            else:
-                loss.backward()
-            # reporter.report(verbose=True)
+                try:
+                    elbo, mel_loss, gate_loss = criterion(y_pred, latent_params, observed_params,
+                        latent_prior_params, observed_prior_params, speaker_ids, y)
+                    elbo /= hparams.smaller_batch_count
+                    mel_loss /= hparams.smaller_batch_count
+                    gate_loss /= hparams.smaller_batch_count
+                except ValueError:
+                    if rank == 0:
+                        checkpoint_path = os.path.join(
+                            output_directory, "checkpoint_{}".format(iteration))
+                        save_checkpoint(model, optimizer, learning_rate, iteration,
+                                        checkpoint_path)
+                    raise
+
+                loss = elbo + gate_loss
+                # reporter.report(verbose=True)
+                if hparams.distributed_run:
+                    reduced_loss = reduce_tensor(loss.data, n_gpus).item()
+                    reduced_mel_loss = reduce_tensor(mel_loss.data, n_gpus).item()
+                    reduced_elbo = reduce_tensor(elbo.data, n_gpus).item()
+                else:
+                    reduced_loss = loss.item()
+                    reduced_mel_loss = mel_loss.item()
+                    reduced_elbo = elbo.item()
+                if hparams.fp16_run:
+                    with amp.scale_loss(loss, optimizer) as scaled_loss:
+                        scaled_loss.backward()
+                else:
+                    loss.backward()
+                # reporter.report(verbose=True)
+                step_elbo += float(reduced_elbo)
+                step_mel_loss += float(reduced_mel_loss)
+                step_loss += float(reduced_loss)
+
 
             if hparams.fp16_run:
                 grad_norm = torch.nn.utils.clip_grad_norm_(
@@ -290,7 +305,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
             if not is_overflow and rank == 0:
                 duration = time.perf_counter() - start
                 print("Train loss {} {:.6f} mel loss {:.6f} ELBO {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(
-                    iteration, reduced_loss, reduced_mel_loss, reduced_elbo, grad_norm, duration))
+                    iteration, step_loss, step_mel_loss, step_elbo, grad_norm, duration))
                 logger.log_training(
                     reduced_loss, reduced_mel_loss, reduced_elbo, grad_norm, learning_rate, duration, iteration)
 

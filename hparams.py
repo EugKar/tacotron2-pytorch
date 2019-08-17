@@ -104,7 +104,7 @@ def create_hparams(hparams_string=None, verbose=False):
         grad_clip_thresh=1.0,
         batch_size=64,
         mask_padding=True,  # set model's padded outputs to padded values
-        smaller_batch_division=1
+        smaller_batch_count=1
     )
 
     if hparams_string:
