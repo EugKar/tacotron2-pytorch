@@ -4,8 +4,9 @@ import torch
 import librosa
 
 
-def get_mask_from_lengths(lengths):
-    max_len = torch.max(lengths).item()
+def get_mask_from_lengths(lengths, max_len=None):
+    if max_len is None:
+        max_len = torch.max(lengths).item()
     ids = torch.arange(0, max_len, out=torch.cuda.LongTensor(max_len))
     mask = (ids < lengths.unsqueeze(1)).byte()
     return mask

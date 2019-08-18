@@ -582,9 +582,9 @@ class Tacotron2(nn.Module):
             (text_padded, input_lengths, mel_padded, max_len, output_lengths),
             (mel_padded, gate_padded))
 
-    def parse_output(self, outputs, output_lengths=None):
+    def parse_output(self, outputs, output_lengths=None, max_length=None):
         if self.mask_padding and output_lengths is not None:
-            mask = ~get_mask_from_lengths(output_lengths)
+            mask = ~get_mask_from_lengths(output_lengths, max_length)
             mask = mask.expand(self.n_mel_channels, mask.size(0), mask.size(1))
             mask = mask.permute(1, 0, 2)
 
@@ -594,7 +594,7 @@ class Tacotron2(nn.Module):
 
         return outputs
 
-    def forward(self, inputs, z_latent, z_observed):
+    def forward(self, inputs, z_latent, z_observed, max_length=None):
         text_inputs, text_lengths, mels, max_len, output_lengths = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
@@ -611,7 +611,7 @@ class Tacotron2(nn.Module):
 
         return self.parse_output(
             [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
-            output_lengths)
+            output_lengths, max_length)
 
     def inference(self, inputs, z_latent, z_observed):
         embedded_inputs = self.embedding(inputs).transpose(1, 2)
@@ -653,7 +653,7 @@ class VAE(nn.Module):
 
         return synthesizer_batch, speaker_ids
 
-    def forward(self, inputs):
+    def forward(self, inputs, max_length=None):
         text_inputs, text_lengths, mels, max_len, output_lengths = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
@@ -664,7 +664,7 @@ class VAE(nn.Module):
         z_latent = MultivariateNormal(latent_z_mu, scale_tril=(0.5 * latent_z_logvar).exp().diag_embed()).rsample()
         z_observed = MultivariateNormal(observed_z_mu, scale_tril=(0.5 * observed_z_logvar).exp().diag_embed()).rsample()
 
-        return (self.synthesizer(inputs, z_latent, z_observed),
+        return (self.synthesizer(inputs, z_latent, z_observed, max_length),
             (latent_z_mu, latent_z_logvar),
             (observed_z_mu, observed_z_logvar),
             (self.latent_prior_mu, self.latent_prior_sigma),
