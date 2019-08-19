@@ -186,8 +186,8 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     if hparams.distributed_run:
         init_distributed(hparams, n_gpus, rank, group_name)
 
-    torch.manual_seed(hparams.seed)
-    torch.cuda.manual_seed(hparams.seed)
+    # torch.manual_seed(hparams.seed)
+    # torch.cuda.manual_seed(hparams.seed)
 
     model = load_model(hparams)
     learning_rate = hparams.learning_rate
