@@ -394,7 +394,7 @@ class Decoder(nn.Module):
         gate_prediction = self.gate_layer(decoder_hidden_attention_context_gate)
         return decoder_output, gate_prediction, self.attention_weights
 
-    def forward(self, memory, decoder_inputs, memory_lengths, z_latent, z_observed):
+    def forward(self, memory, decoder_inputs, memory_lengths, z_latent, z_observed, max_memory_length=None):
         """ Decoder forward pass for training
         PARAMS
         ------
@@ -415,7 +415,7 @@ class Decoder(nn.Module):
         decoder_inputs = self.prenet(decoder_inputs)
 
         self.initialize_decoder_states(
-            memory, mask=~get_mask_from_lengths(memory_lengths))
+            memory, mask=~get_mask_from_lengths(memory_lengths, max_len=max_memory_length))
 
         mel_outputs, gate_outputs, alignments = [], [], []
         while len(mel_outputs) < decoder_inputs.size(0) - 1:
@@ -594,7 +594,8 @@ class Tacotron2(nn.Module):
 
         return outputs
 
-    def forward(self, inputs, z_latent, z_observed, max_length=None):
+    def forward(self, inputs, z_latent, z_observed, max_output_length=None,
+                max_input_length=None):
         text_inputs, text_lengths, mels, max_len, output_lengths = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
@@ -604,14 +605,14 @@ class Tacotron2(nn.Module):
 
         mel_outputs, gate_outputs, alignments = self.decoder(
             encoder_outputs, mels, memory_lengths=text_lengths,
-            z_latent=z_latent, z_observed=z_observed)
+            z_latent=z_latent, z_observed=z_observed, max_memory_length=max_input_length)
 
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
 
         return self.parse_output(
             [mel_outputs, mel_outputs_postnet, gate_outputs, alignments],
-            output_lengths, max_length)
+            output_lengths, max_output_length)
 
     def inference(self, inputs, z_latent, z_observed):
         embedded_inputs = self.embedding(inputs).transpose(1, 2)
@@ -653,7 +654,7 @@ class VAE(nn.Module):
 
         return synthesizer_batch, speaker_ids
 
-    def forward(self, inputs, max_length=None):
+    def forward(self, inputs, max_output_length=None, max_input_length=None):
         text_inputs, text_lengths, mels, max_len, output_lengths = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
@@ -664,7 +665,7 @@ class VAE(nn.Module):
         z_latent = MultivariateNormal(latent_z_mu, scale_tril=(0.5 * latent_z_logvar).exp().diag_embed()).rsample()
         z_observed = MultivariateNormal(observed_z_mu, scale_tril=(0.5 * observed_z_logvar).exp().diag_embed()).rsample()
 
-        return (self.synthesizer(inputs, z_latent, z_observed, max_length),
+        return (self.synthesizer(inputs, z_latent, z_observed, max_output_length, max_input_length),
             (latent_z_mu, latent_z_logvar),
             (observed_z_mu, observed_z_logvar),
             (self.latent_prior_mu, self.latent_prior_sigma),

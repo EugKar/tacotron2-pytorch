@@ -6,6 +6,7 @@ from numpy import finfo
 
 import torch
 from torch.utils.data import DataLoader
+from torch._six import inf
 
 import torch_xla
 import torch_xla_py.data_parallel as dp
@@ -124,9 +125,10 @@ def load_checkpoint(checkpoint_path, model):
     checkpoint_dict = torch.load(checkpoint_path, map_location='cpu')
     model.load_state_dict(checkpoint_dict['state_dict'])
     learning_rate = checkpoint_dict['learning_rate']
-    print("Loaded checkpoint '{}'" .format(
-        checkpoint_path))
-    return model, checkpoint_dict['optimizer'], learning_rate
+    iteration = checkpoint_dict['iteration']
+    print("Loaded checkpoint '{}' from iteration {}" .format(
+        checkpoint_path, iteration))
+    return model, checkpoint_dict['optimizer'], learning_rate, iteration
 
 
 def save_checkpoint(model, optimizer_dict, learning_rate, iteration, filepath):
@@ -168,14 +170,13 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
     optimizer_dict = None
     model = VAE(hparams)
     if checkpoint_path is not None:
-        model, optimizer_dict, _learning_rate, = load_checkpoint(
+        model, optimizer_dict, _learning_rate, epoch_offset = load_checkpoint(
             checkpoint_path, model)
         if hparams.use_saved_learning_rate:
             learning_rate = _learning_rate
     model_parallel = dp.DataParallel(model, device_ids=devices)
 
-    iteration += 1  # next iteration is iteration + 1
-    epoch_offset = max(0, int(iteration / len(train_loader)))
+    epoch_offset += 1  # next iteration is iteration + 1
 
     if hparams.autograd_detect_anomalies:
         torch.autograd.set_detect_anomaly(True)
@@ -195,7 +196,7 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
 
         model.train()
 
-        for batch in train_loader:
+        for batch, iteration in enumerate(train_loader):
             start = time.perf_counter()
             for param_group in optimizer.param_groups:
                 param_group['lr'] = learning_rate
@@ -206,7 +207,8 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
             
             (y_pred, latent_params, observed_params,
                 latent_prior_params, observed_prior_params) = model((text_padded,
-                    input_lengths, mel_padded, hparams, hparams.max_input_len, output_lengths))
+                    input_lengths, mel_padded, hparams, hparams.max_input_len, output_lengths),
+                    max_output_length=hparams.max_frames, max_input_length=hparams.max_input_len)
 
             elbo, mel_loss, gate_loss = criterion(y_pred, latent_params, observed_params,
                 latent_prior_params, observed_prior_params, speaker_ids, (mel_padded, gate_padded))
@@ -224,8 +226,8 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
             model.apply(clipper)
             tracker.add(hparams.batch_size)
             duration = time.perf_counter() - start
-            print("Device {}: train loss {} {:.6f} mel loss {:.6f} ELBO {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(
-                device, iteration, reduced_loss, reduced_mel_loss, reduced_elbo, grad_norm, duration))
+            print("Device {} iteration {} epoch {}: train loss {:.6f} mel loss {:.6f} ELBO {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(
+                device, iteration, epoch, reduced_loss, reduced_mel_loss, reduced_elbo, grad_norm, duration))
         return optimizer.state_dict()
 
     def val_loop_fn(model, loader, device, context):
@@ -237,7 +239,8 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
                 output_lengths, speaker_ids) = batch
             (y_pred, latent_params, observed_params,
                 latent_prior_params, observed_prior_params) = model((text_padded,
-                    input_lengths, mel_padded, hparams, hparams.max_input_len, output_lengths))
+                    input_lengths, mel_padded, hparams, hparams.max_input_len, output_lengths),
+                    max_output_length=hparams.max_frames, max_input_length=hparams.max_input_len)
             mel_loss, gate_loss = val_criterion(y_pred, (mel_padded, gate_padded))
             loss = mel_loss + gate_loss
             val_loss += loss
@@ -254,7 +257,7 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
         #     reduced_loss, reduced_mel_loss, reduced_elbo, grad_norm, learning_rate, duration, iteration)
 
         checkpoint_path = os.path.join(
-            output_directory, "checkpoint_{}".format(iteration))
+            output_directory, "checkpoint_{}".format(epoch))
         save_checkpoint(model_parallel.models[0], optimizer_dict_save, learning_rate,
                         epoch, checkpoint_path)
         print("Validation loss {}: {:9f}  ".format(epoch, val_loss))
