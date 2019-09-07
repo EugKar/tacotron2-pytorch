@@ -151,7 +151,7 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
     num_cores = None if hparams.num_cores == -1 else hparams.num_cores
     devices = (
         xm.get_xla_supported_devices(
-            max_devices=hparams.num_cores) if hparams.num_cores != 0 else [])
+            max_devices=num_cores) if num_cores != 0 else [])
     learning_rate = hparams.learning_rate * max(len(devices), 1)
 
     val_criterion = Tacotron2Loss()
