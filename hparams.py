@@ -109,7 +109,7 @@ def create_hparams(hparams_string=None, verbose=False):
 
         # XLA Hyperparameters
         num_workers=4,
-        num_cores=None,
+        num_cores=-1,
         metrics_debug=False,
     )
 

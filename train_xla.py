@@ -148,6 +148,7 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
     """
     torch.manual_seed(hparams.seed)
 
+    num_cores = None if hparams.num_cores == -1 else hparams.num_cores
     devices = (
         xm.get_xla_supported_devices(
             max_devices=hparams.num_cores) if hparams.num_cores != 0 else [])

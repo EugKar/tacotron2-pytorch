@@ -172,7 +172,7 @@ class Encoder(nn.Module):
                             int(hparams.encoder_embedding_dim / 2), 1,
                             batch_first=True, bidirectional=True)
 
-    def forward(self, x, input_lengths):
+    def forward(self, x, input_lengths, total_length=None):
         for conv in self.convolutions:
             x = F.dropout(F.relu(conv(x)), 0.5, self.training)
 
@@ -187,7 +187,7 @@ class Encoder(nn.Module):
         outputs, _ = self.lstm(x)
 
         outputs, _ = nn.utils.rnn.pad_packed_sequence(
-            outputs, batch_first=True)
+            outputs, batch_first=True, total_length=total_length)
 
         return outputs
 
@@ -502,16 +502,20 @@ class LatentEncoder(nn.Module):
         self.mu_linear_projection = LinearNorm(hparams.latent_rnn_dim, output_dim)
         self.logvar_linear_projection = LinearNorm(hparams.latent_rnn_dim, output_dim)
 
-    def forward(self, x, input_lengths):
+    def forward(self, x, input_lengths, max_length=None):
         # x = x.transpose(1, 2)   # (B, T_out, n_mel_channels) -> (B, n_mel_channels, T_out)
         for conv in self.convolutions:
             x = F.dropout(F.relu(conv(x)), 0.5, self.training)
         x = x.transpose(1, 2)   # (B, n_mel_channels, T_out) -> (B, T_out, latent_embedding_dim)
 
         conv_length = input_lengths
+        total_length = max_length
         for i in range(self.hparams.latent_n_convolutions):
             conv_length = torch.div((conv_length + 2 * int((self.hparams.latent_kernel_size - 1) / 2) -
                 (self.hparams.latent_kernel_size - 1) - 1), self.hparams.latent_stride) + 1
+            if total_length is not None:
+                total_length = (total_length + 2 * int((self.hparams.latent_kernel_size - 1) / 2) -
+                    (self.hparams.latent_kernel_size - 1) - 1) // self.hparams.latent_stride + 1
 
         input_lengths_sorted, inds = conv_length.sort(dim=0, descending=True)
         gather_inds = inds.unsqueeze(1).repeat([1, x.size()[1]]).unsqueeze(2).repeat([1, 1, x.size()[2]])
@@ -526,7 +530,7 @@ class LatentEncoder(nn.Module):
         outputs, _ = self.gru(x_sorted)
 
         outputs, _ = nn.utils.rnn.pad_packed_sequence(
-            outputs, batch_first=True)
+            outputs, batch_first=True, total_length=total_length)
 
         outputs = outputs.mean(dim=1)
         mu, logvar = self.mu_linear_projection(outputs), self.logvar_linear_projection(outputs)
@@ -601,7 +605,7 @@ class Tacotron2(nn.Module):
 
         embedded_inputs = self.embedding(text_inputs).transpose(1, 2)
 
-        encoder_outputs = self.encoder(embedded_inputs, text_lengths)
+        encoder_outputs = self.encoder(embedded_inputs, text_lengths, max_input_length)
 
         mel_outputs, gate_outputs, alignments = self.decoder(
             encoder_outputs, mels, memory_lengths=text_lengths,
@@ -658,9 +662,9 @@ class VAE(nn.Module):
         text_inputs, text_lengths, mels, max_len, output_lengths = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
-        latent_z_mu, latent_z_logvar = self.latent_z(mels, output_lengths)
+        latent_z_mu, latent_z_logvar = self.latent_z(mels, output_lengths, max_output_length)
 
-        observed_z_mu, observed_z_logvar = self.observed_z(mels, output_lengths)
+        observed_z_mu, observed_z_logvar = self.observed_z(mels, output_lengths, max_output_length)
 
         z_latent = MultivariateNormal(latent_z_mu, scale_tril=(0.5 * latent_z_logvar).exp().diag_embed()).rsample()
         z_observed = MultivariateNormal(observed_z_mu, scale_tril=(0.5 * observed_z_logvar).exp().diag_embed()).rsample()
