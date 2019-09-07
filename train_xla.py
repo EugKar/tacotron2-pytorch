@@ -19,9 +19,6 @@ from loss_function import Tacotron2Loss, VAELoss
 from logger import Tacotron2Logger
 from hparams import create_hparams
 
-import multiprocessing
-multiprocessing.set_start_method('spawn', True)
-
 def clip_grad_norm_xla_(parameters, max_norm, norm_type=2):
     r"""Clips gradient norm of an iterable of parameters.
 
