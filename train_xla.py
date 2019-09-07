@@ -200,8 +200,10 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
                 param_group['lr'] = learning_rate
 
             optimizer.zero_grad()
+
+            device_batch = [t.to(device) for t in batch]
             (text_padded, input_lengths, mel_padded, gate_padded,
-                output_lengths, speaker_ids) = batch
+                output_lengths, speaker_ids) = device_batch
             
             (y_pred, latent_params, observed_params,
                 latent_prior_params, observed_prior_params) = model((text_padded,
@@ -233,8 +235,9 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
         val_loss = 0.0
         total_samples = 0
         for batch in loader:
+            device_batch = [t.to(device) for t in batch]
             (text_padded, input_lengths, mel_padded, gate_padded,
-                output_lengths, speaker_ids) = batch
+                output_lengths, speaker_ids) = device_batch
             (y_pred, latent_params, observed_params,
                 latent_prior_params, observed_prior_params) = model((text_padded,
                     input_lengths, mel_padded, hparams.max_input_len, output_lengths),
