@@ -4,11 +4,14 @@ import torch
 import librosa
 
 
-def get_mask_from_lengths(lengths, max_len=None):
+def get_mask_from_lengths(lengths, max_len=None, invert=False):
     if max_len is None:
         max_len = torch.max(lengths).item()
     ids = torch.arange(0, max_len, dtype=torch.long, device=lengths.device)
-    mask = (ids < lengths.unsqueeze(1)).byte()
+    if invert:
+        mask = (ids >= lengths.unsqueeze(1)).byte()
+    else:
+        mask = (ids < lengths.unsqueeze(1)).byte()
     return mask
 
 

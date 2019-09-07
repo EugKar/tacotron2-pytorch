@@ -415,7 +415,7 @@ class Decoder(nn.Module):
         decoder_inputs = self.prenet(decoder_inputs)
 
         self.initialize_decoder_states(
-            memory, mask=~get_mask_from_lengths(memory_lengths, max_len=max_memory_length))
+            memory, mask=get_mask_from_lengths(memory_lengths, max_len=max_memory_length, invert=True))
 
         mel_outputs, gate_outputs, alignments = [], [], []
         while len(mel_outputs) < decoder_inputs.size(0) - 1:
@@ -588,7 +588,7 @@ class Tacotron2(nn.Module):
 
     def parse_output(self, outputs, output_lengths=None, max_length=None):
         if self.mask_padding and output_lengths is not None:
-            mask = ~get_mask_from_lengths(output_lengths, max_length)
+            mask = get_mask_from_lengths(output_lengths, max_length, invert=True)
             mask = mask.expand(self.n_mel_channels, mask.size(0), mask.size(1))
             mask = mask.permute(1, 0, 2)
 
