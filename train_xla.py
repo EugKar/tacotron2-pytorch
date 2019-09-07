@@ -207,7 +207,7 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
             
             (y_pred, latent_params, observed_params,
                 latent_prior_params, observed_prior_params) = model((text_padded,
-                    input_lengths, mel_padded, hparams, hparams.max_input_len, output_lengths),
+                    input_lengths, mel_padded, hparams.max_input_len, output_lengths),
                     max_output_length=hparams.max_frames, max_input_length=hparams.max_input_len)
 
             elbo, mel_loss, gate_loss = criterion(y_pred, latent_params, observed_params,
@@ -239,7 +239,7 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
                 output_lengths, speaker_ids) = batch
             (y_pred, latent_params, observed_params,
                 latent_prior_params, observed_prior_params) = model((text_padded,
-                    input_lengths, mel_padded, hparams, hparams.max_input_len, output_lengths),
+                    input_lengths, mel_padded, hparams.max_input_len, output_lengths),
                     max_output_length=hparams.max_frames, max_input_length=hparams.max_input_len)
             mel_loss, gate_loss = val_criterion(y_pred, (mel_padded, gate_padded))
             loss = mel_loss + gate_loss
