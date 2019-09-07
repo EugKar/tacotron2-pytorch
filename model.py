@@ -665,7 +665,8 @@ class VAE(nn.Module):
         z_latent = MultivariateNormal(latent_z_mu, scale_tril=(0.5 * latent_z_logvar).exp().diag_embed()).rsample()
         z_observed = MultivariateNormal(observed_z_mu, scale_tril=(0.5 * observed_z_logvar).exp().diag_embed()).rsample()
 
-        return (self.synthesizer(inputs, z_latent, z_observed, max_output_length, max_input_length),
+        return (self.synthesizer(inputs, z_latent, z_observed,
+             max_output_length=max_output_length, max_input_length=max_input_length),
             (latent_z_mu, latent_z_logvar),
             (observed_z_mu, observed_z_logvar),
             (self.latent_prior_mu, self.latent_prior_sigma),
