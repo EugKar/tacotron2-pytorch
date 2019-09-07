@@ -196,7 +196,7 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
 
         model.train()
 
-        for batch, iteration in enumerate(train_loader):
+        for iteration, batch in enumerate(train_loader):
             start = time.perf_counter()
             for param_group in optimizer.param_groups:
                 param_group['lr'] = learning_rate
