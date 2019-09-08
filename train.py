@@ -246,7 +246,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
 
             model.zero_grad()
 
-            max_length = int(big_batch[-2].max())
+            max_length = int(big_batch[1].max())
             batch_start = 0
             step_elbo, step_mel_loss, step_loss = 0, 0, 0
             for _ in range(hparams.smaller_batch_count):

@@ -396,7 +396,8 @@ class Decoder(nn.Module):
         gate_prediction = self.gate_layer(decoder_hidden_attention_context_gate)
         return decoder_output, gate_prediction, self.attention_weights
 
-    def forward(self, memory, decoder_inputs, memory_lengths, z_latent, z_observed, max_memory_length=None):
+    def forward(self, memory, decoder_inputs, memory_lengths, z_latent, z_observed,
+        max_memory_length=None, max_output_length=None):
         """ Decoder forward pass for training
         PARAMS
         ------
@@ -420,17 +421,25 @@ class Decoder(nn.Module):
             memory, mask=get_mask_from_lengths(memory_lengths, max_len=max_memory_length, invert=True))
 
         mel_outputs, gate_outputs, alignments = [], [], []
-        while len(mel_outputs) < decoder_inputs.size(0) - 1:
-            decoder_input = decoder_inputs[len(mel_outputs)]
-            mel_output, gate_output, attention_weights = self.decode(
-                decoder_input, z_latent, z_observed)
-            mel_outputs += [mel_output.squeeze(1)]
-            gate_outputs += [gate_output.squeeze()]
-            alignments += [attention_weights]
+        if max_output_length is None:
+            while len(mel_outputs) < decoder_inputs.size(0) - 1:
+                decoder_input = decoder_inputs[len(mel_outputs)]
+                mel_output, gate_output, attention_weights = self.decode(
+                    decoder_input, z_latent, z_observed)
+                mel_outputs += [mel_output.squeeze(1)]
+                gate_outputs += [gate_output.squeeze()]
+                alignments += [attention_weights]
+        else:
+            for _ in range(max_output_length):
+                decoder_input = decoder_inputs[len(mel_outputs)]
+                mel_output, gate_output, attention_weights = self.decode(
+                    decoder_input, z_latent, z_observed)
+                mel_outputs += [mel_output.squeeze(1)]
+                gate_outputs += [gate_output.squeeze()]
+                alignments += [attention_weights]
 
         mel_outputs, gate_outputs, alignments = self.parse_decoder_outputs(
             mel_outputs, gate_outputs, alignments)
-
         return mel_outputs, gate_outputs, alignments
 
     def inference(self, memory, z_latent, z_observed):
@@ -621,7 +630,8 @@ class Tacotron2(nn.Module):
 
         mel_outputs, gate_outputs, alignments = self.decoder(
             encoder_outputs, mels, memory_lengths=text_lengths,
-            z_latent=z_latent, z_observed=z_observed, max_memory_length=max_input_length)
+            z_latent=z_latent, z_observed=z_observed, max_memory_length=max_input_length,
+            max_output_length=max_output_length)
 
         mel_outputs_postnet = self.postnet(mel_outputs)
         mel_outputs_postnet = mel_outputs + mel_outputs_postnet
