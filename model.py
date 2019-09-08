@@ -332,12 +332,18 @@ class Decoder(nn.Module):
         alignments:
         """
         # (T_out, B) -> (B, T_out)
-        alignments = torch.stack(alignments).transpose(0, 1)
+        if isinstance(alignments, list):
+            alignments = torch.stack(alignments)
+        alignments.transpose_(0, 1)
         # (T_out, B) -> (B, T_out)
-        gate_outputs = torch.stack(gate_outputs).transpose(0, 1)
+        if isinstance(gate_outputs, list):
+            gate_outputs = torch.stack(gate_outputs)
+        gate_outputs.transpose_(0, 1)
         gate_outputs = gate_outputs.contiguous()
         # (T_out, B, n_mel_channels) -> (B, T_out, n_mel_channels)
-        mel_outputs = torch.stack(mel_outputs).transpose(0, 1).contiguous()
+        if isinstance(mel_outputs, list):
+            mel_outputs = torch.stack(mel_outputs)
+        mel_outputs = mel_outputs.transpose(0, 1).contiguous()
         # decouple frames per step
         mel_outputs = mel_outputs.view(
             mel_outputs.size(0), -1, self.n_mel_channels)
@@ -412,6 +418,8 @@ class Decoder(nn.Module):
         alignments: sequence of attention weights from the decoder
         """
 
+        batch_size = decoder_inputs.size(0)
+
         decoder_input = self.get_go_frame(memory).unsqueeze(0)
         decoder_inputs = self.parse_decoder_inputs(decoder_inputs)
         decoder_inputs = torch.cat((decoder_input, decoder_inputs), dim=0)
@@ -430,13 +438,19 @@ class Decoder(nn.Module):
                 gate_outputs += [gate_output.squeeze()]
                 alignments += [attention_weights]
         else:
-            for _ in range(max_output_length):
+            mel_outputs = torch.zeros([max_output_length, batch_size, self.n_mel_channels],
+                dtype=decoder_inputs.dtype, device=decoder_inputs.device)
+            gate_outputs = torch.zeros([max_output_length, batch_size], dtype=mel_outputs.dtype,
+                device=mel_outputs.device)
+            alignments = torch.zeros([max_output_length, mel_outputs.size(1), max_memory_length],
+                dtype=mel_outputs.dtype, device=mel_outputs.device)
+            for i in range(max_output_length):
                 decoder_input = decoder_inputs[len(mel_outputs)]
                 mel_output, gate_output, attention_weights = self.decode(
                     decoder_input, z_latent, z_observed)
-                mel_outputs += [mel_output.squeeze(1)]
-                gate_outputs += [gate_output.squeeze()]
-                alignments += [attention_weights]
+                mel_outputs[i, ...] = mel_output.squeeze(1)
+                gate_outputs[i, ...] = gate_output.squeeze()
+                alignments[i, ...] = attention_weights
 
         mel_outputs, gate_outputs, alignments = self.parse_decoder_outputs(
             mel_outputs, gate_outputs, alignments)
