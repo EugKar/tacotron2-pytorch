@@ -111,6 +111,7 @@ def create_hparams(hparams_string=None, verbose=False):
         num_workers=4,
         num_cores=-1,
         metrics_debug=False,
+        enable_pack_padded_sequence=True,
     )
 
     if hparams_string:

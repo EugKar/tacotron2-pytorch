@@ -155,7 +155,7 @@ class Encoder(nn.Module):
     """
     def __init__(self, hparams):
         super(Encoder, self).__init__()
-
+        self.hparams = hparams
         convolutions = []
         for _ in range(hparams.encoder_n_convolutions):
             conv_layer = nn.Sequential(
@@ -178,16 +178,18 @@ class Encoder(nn.Module):
 
         x = x.transpose(1, 2)
 
-        # pytorch tensor are not reversible, hence the conversion
-        input_lengths = input_lengths.cpu().numpy()
-        x = nn.utils.rnn.pack_padded_sequence(
-            x, input_lengths, batch_first=True)
+        if self.hparams.enable_pack_padded_sequence:
+            # pytorch tensor are not reversible, hence the conversion
+            input_lengths = input_lengths.cpu().numpy()
+            x = nn.utils.rnn.pack_padded_sequence(
+                x, input_lengths, batch_first=True)
 
         self.lstm.flatten_parameters()
         outputs, _ = self.lstm(x)
 
-        outputs, _ = nn.utils.rnn.pad_packed_sequence(
-            outputs, batch_first=True, total_length=total_length)
+        if self.hparams.enable_pack_padded_sequence:
+            outputs, _ = nn.utils.rnn.pad_packed_sequence(
+                outputs, batch_first=True, total_length=total_length)
 
         return outputs
 
@@ -508,41 +510,48 @@ class LatentEncoder(nn.Module):
             x = F.dropout(F.relu(conv(x)), 0.5, self.training)
         x = x.transpose(1, 2)   # (B, n_mel_channels, T_out) -> (B, T_out, latent_embedding_dim)
 
-        conv_length = input_lengths
-        total_length = max_length
-        for i in range(self.hparams.latent_n_convolutions):
-            conv_length = torch.div((conv_length + 2 * int((self.hparams.latent_kernel_size - 1) / 2) -
-                (self.hparams.latent_kernel_size - 1) - 1), self.hparams.latent_stride) + 1
-            if total_length is not None:
-                total_length = (total_length + 2 * int((self.hparams.latent_kernel_size - 1) / 2) -
-                    (self.hparams.latent_kernel_size - 1) - 1) // self.hparams.latent_stride + 1
+        if not self.hparams.enable_pack_padded_sequence:
+            x_sorted = x
+        else:
+            conv_length = input_lengths
+            total_length = max_length
+            for i in range(self.hparams.latent_n_convolutions):
+                conv_length = torch.div((conv_length + 2 * int((self.hparams.latent_kernel_size - 1) / 2) -
+                    (self.hparams.latent_kernel_size - 1) - 1), self.hparams.latent_stride) + 1
+                if total_length is not None:
+                    total_length = (total_length + 2 * int((self.hparams.latent_kernel_size - 1) / 2) -
+                        (self.hparams.latent_kernel_size - 1) - 1) // self.hparams.latent_stride + 1
 
-        device = conv_length.device
-        input_lengths_sorted, inds = conv_length.cpu().sort(dim=0, descending=True)
-        inds = inds.to(device)
-        gather_inds = inds.unsqueeze(1).repeat([1, x.size()[1]]).unsqueeze(2).repeat([1, 1, x.size()[2]])
-        x_sorted = x.gather(0, gather_inds)
+            device = conv_length.device
+            input_lengths_sorted, inds = conv_length.cpu().sort(dim=0, descending=True)
+            inds = inds.to(device)
+            gather_inds = inds.unsqueeze(1).repeat([1, x.size()[1]]).unsqueeze(2).repeat([1, 1, x.size()[2]])
+            x_sorted = x.gather(0, gather_inds)
 
-        # pytorch tensor are not reversible, hence the conversion
-        input_lengths_sorted = input_lengths_sorted.numpy()
-        x_sorted = nn.utils.rnn.pack_padded_sequence(
-            x_sorted, input_lengths_sorted, batch_first=True)
+            # pytorch tensor are not reversible, hence the conversion
+            input_lengths_sorted = input_lengths_sorted.numpy()
+            x_sorted = nn.utils.rnn.pack_padded_sequence(
+                x_sorted, input_lengths_sorted, batch_first=True)
 
         self.gru.flatten_parameters()
         outputs, _ = self.gru(x_sorted)
 
-        outputs, _ = nn.utils.rnn.pad_packed_sequence(
-            outputs, batch_first=True, total_length=total_length)
+        if self.hparams.enable_pack_padded_sequence:
+            outputs, _ = nn.utils.rnn.pad_packed_sequence(
+                outputs, batch_first=True, total_length=total_length)
 
         outputs = outputs.mean(dim=1)
         mu, logvar = self.mu_linear_projection(outputs), self.logvar_linear_projection(outputs)
 
-        mu_unsorted, logvar_unsorted = torch.zeros_like(mu), torch.zeros_like(logvar)
-        scatter_inds = inds.unsqueeze(1).repeat([1, mu.size()[1]])
-        mu_unsorted.scatter_(0, scatter_inds, mu)
-        logvar_unsorted.scatter_(0, scatter_inds, logvar)
+        if not self.hparams.enable_pack_padded_sequence:
+            return mu, logvar
+        else:
+            mu_unsorted, logvar_unsorted = torch.zeros_like(mu), torch.zeros_like(logvar)
+            scatter_inds = inds.unsqueeze(1).repeat([1, mu.size()[1]])
+            mu_unsorted.scatter_(0, scatter_inds, mu)
+            logvar_unsorted.scatter_(0, scatter_inds, logvar)
 
-        return mu_unsorted, logvar_unsorted
+            return mu_unsorted, logvar_unsorted
 
     def inference(self, x):
         # x = x.transpose(1, 2)   # (B, T_out, n_mel_channels) -> (B, n_mel_channels, T_out)

@@ -279,6 +279,7 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     hparams = create_hparams(args.hparams)
+    hparams.set_hparam('enable_pack_padded_sequence', False)
 
     print("Dynamic Loss Scaling:", hparams.dynamic_loss_scaling)
 
