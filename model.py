@@ -517,12 +517,14 @@ class LatentEncoder(nn.Module):
                 total_length = (total_length + 2 * int((self.hparams.latent_kernel_size - 1) / 2) -
                     (self.hparams.latent_kernel_size - 1) - 1) // self.hparams.latent_stride + 1
 
-        input_lengths_sorted, inds = conv_length.sort(dim=0, descending=True)
+        device = conv_length.device
+        input_lengths_sorted, inds = conv_length.cpu().sort(dim=0, descending=True)
+        inds = inds.to(device)
         gather_inds = inds.unsqueeze(1).repeat([1, x.size()[1]]).unsqueeze(2).repeat([1, 1, x.size()[2]])
         x_sorted = x.gather(0, gather_inds)
 
         # pytorch tensor are not reversible, hence the conversion
-        input_lengths_sorted = input_lengths_sorted.cpu().numpy()
+        input_lengths_sorted = input_lengths_sorted.numpy()
         x_sorted = nn.utils.rnn.pack_padded_sequence(
             x_sorted, input_lengths_sorted, batch_first=True)
 
