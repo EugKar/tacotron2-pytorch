@@ -201,7 +201,7 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
 
             optimizer.zero_grad()
 
-            (x, y), speaker_ids = model.parse_batch(batchmax_input_length=hparams.max_input_len,
+            (x, y), speaker_ids = model.parse_batch(batch, max_input_length=hparams.max_input_len,
                 max_output_length=hparams.max_frames, device=device)
             
             (y_pred, latent_params, observed_params,
@@ -232,7 +232,7 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
         val_loss = 0.0
         total_samples = 0
         for batch in loader:
-            (x, y), speaker_ids = model.parse_batch(batchmax_input_length=hparams.max_input_len,
+            (x, y), speaker_ids = model.parse_batch(batch, max_input_length=hparams.max_input_len,
                 max_output_length=hparams.max_frames, device=device)
             (y_pred, latent_params, observed_params,
                 latent_prior_params, observed_prior_params) = model(x)
