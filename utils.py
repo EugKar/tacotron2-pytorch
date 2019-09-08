@@ -27,9 +27,9 @@ def load_filepaths_and_text(filename, split="|"):
     return filepaths_and_text
 
 
-def to_gpu(x):
+def to_device(x, device=None, dtype=None):
     x = x.contiguous()
+    if device is None:
+        device = torch.cuda.current_device() if torch.cuda.is_available() else 'cpu'
 
-    if torch.cuda.is_available():
-        x = x.cuda(non_blocking=True)
-    return torch.autograd.Variable(x)
+    return x.to(device=device, dtype=dtype, non_blocking=True, copy=True)

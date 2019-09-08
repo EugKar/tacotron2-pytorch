@@ -6,7 +6,7 @@ from torch.nn import functional as F
 from torch.distributions import MultivariateNormal
 import numpy as np
 from layers import ConvNorm, LinearNorm
-from utils import to_gpu, get_mask_from_lengths
+from utils import to_device, get_mask_from_lengths
 
 
 class LocationLayer(nn.Module):
@@ -583,19 +583,21 @@ class Tacotron2(nn.Module):
         self.decoder = Decoder(hparams)
         self.postnet = Postnet(hparams)
 
-    def parse_batch(self, batch):
-        text_padded, input_lengths, mel_padded, gate_padded, \
-            output_lengths = batch
-        text_padded = to_gpu(text_padded).long()
-        input_lengths = to_gpu(input_lengths).long()
-        max_len = torch.max(input_lengths.data).item()
-        mel_padded = to_gpu(mel_padded).float()
-        gate_padded = to_gpu(gate_padded).float()
-        output_lengths = to_gpu(output_lengths).long()
+    def parse_batch(self, batch, max_input_length=None, max_output_length=None, device=None):
+        text_padded, input_lengths, mel_padded, gate_padded, output_lengths = batch
+        text_padded = to_device(text_padded, device=device, dtype=torch.long)
+        input_lengths = to_device(input_lengths, device=device, dtype=torch.long)
+        if max_input_length is None:
+            max_input_length = torch.max(input_lengths.data).item()
+        mel_padded = to_device(mel_padded, device=device, dtype=torch.float)
+        gate_padded = to_device(gate_padded, device=device, dtype=torch.float)
+        output_lengths = to_device(output_lengths, device=device, dtype=torch.long)
+        if max_output_length is None:
+            max_output_length = torch.max(output_lengths.data).item()
 
         return (
-            (text_padded, input_lengths, mel_padded, max_len, output_lengths),
-            (mel_padded, gate_padded))
+                (text_padded, input_lengths, max_input_length, mel_padded, output_lengths, max_output_length),
+                (mel_padded, gate_padded))
 
     def parse_output(self, outputs, output_lengths=None, max_length=None):
         if self.mask_padding and output_lengths is not None:
@@ -609,9 +611,8 @@ class Tacotron2(nn.Module):
 
         return outputs
 
-    def forward(self, inputs, z_latent, z_observed, max_output_length=None,
-                max_input_length=None):
-        text_inputs, text_lengths, mels, max_len, output_lengths = inputs
+    def forward(self, inputs, z_latent, z_observed):
+        text_inputs, text_lengths, max_input_length, mels,output_lengths, max_output_length = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
         embedded_inputs = self.embedding(text_inputs).transpose(1, 2)
@@ -661,16 +662,17 @@ class VAE(nn.Module):
         torch.nn.init.uniform_(self.latent_prior_mu, a=-0.5, b=0.5)
         torch.nn.init.uniform_(self.observed_prior_mu, a=-0.5, b=0.5)
 
-    def parse_batch(self, batch):
-        text_padded, input_lengths, mel_padded, gate_padded, \
-            output_lengths, speaker_ids = batch
-        synthesizer_batch = self.synthesizer.parse_batch(batch[:-1])
-        speaker_ids = to_gpu(speaker_ids).long()
+    def parse_batch(self, batch, max_input_length=None, max_output_length=None, device=None):
+        speaker_ids = batch[-1]
+        synthesizer_batch = self.synthesizer.parse_batch(batch[:-1], max_input_length,
+            max_output_length, device)
+        speaker_ids = to_device(speaker_ids, device=device, dtype=torch.long)
 
         return synthesizer_batch, speaker_ids
 
-    def forward(self, inputs, max_output_length=None, max_input_length=None):
-        text_inputs, text_lengths, mels, max_len, output_lengths = inputs
+    def forward(self, inputs):
+        (text_inputs, text_lengths, max_input_length, mels,
+            output_lengths, max_output_length) = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
         latent_z_mu, latent_z_logvar = self.latent_z(mels, output_lengths, max_output_length)
@@ -680,8 +682,7 @@ class VAE(nn.Module):
         z_latent = MultivariateNormal(latent_z_mu, scale_tril=(0.5 * latent_z_logvar).exp().diag_embed()).rsample()
         z_observed = MultivariateNormal(observed_z_mu, scale_tril=(0.5 * observed_z_logvar).exp().diag_embed()).rsample()
 
-        return (self.synthesizer(inputs, z_latent, z_observed,
-             max_output_length=max_output_length, max_input_length=max_input_length),
+        return (self.synthesizer(inputs, z_latent, z_observed),
             (latent_z_mu, latent_z_logvar),
             (observed_z_mu, observed_z_logvar),
             (self.latent_prior_mu, self.latent_prior_sigma),

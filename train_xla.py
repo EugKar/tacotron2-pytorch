@@ -201,17 +201,14 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
 
             optimizer.zero_grad()
 
-            device_batch = [t.to(device) for t in batch]
-            (text_padded, input_lengths, mel_padded, gate_padded,
-                output_lengths, speaker_ids) = device_batch
+            (x, y), speaker_ids = model.parse_batch(batchmax_input_length=hparams.max_input_len,
+                max_output_length=hparams.max_frames, device=device)
             
             (y_pred, latent_params, observed_params,
-                latent_prior_params, observed_prior_params) = model((text_padded,
-                    input_lengths, mel_padded, hparams.max_input_len, output_lengths),
-                    max_output_length=hparams.max_frames, max_input_length=hparams.max_input_len)
+                latent_prior_params, observed_prior_params) = model(x)
 
             elbo, mel_loss, gate_loss = criterion(y_pred, latent_params, observed_params,
-                latent_prior_params, observed_prior_params, speaker_ids, (mel_padded, gate_padded))
+                latent_prior_params, observed_prior_params, speaker_ids, y)
 
             loss = elbo + gate_loss
             reduced_loss = loss.item()
@@ -235,14 +232,11 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
         val_loss = 0.0
         total_samples = 0
         for batch in loader:
-            device_batch = [t.to(device) for t in batch]
-            (text_padded, input_lengths, mel_padded, gate_padded,
-                output_lengths, speaker_ids) = device_batch
+            (x, y), speaker_ids = model.parse_batch(batchmax_input_length=hparams.max_input_len,
+                max_output_length=hparams.max_frames, device=device)
             (y_pred, latent_params, observed_params,
-                latent_prior_params, observed_prior_params) = model((text_padded,
-                    input_lengths, mel_padded, hparams.max_input_len, output_lengths),
-                    max_output_length=hparams.max_frames, max_input_length=hparams.max_input_len)
-            mel_loss, gate_loss = val_criterion(y_pred, (mel_padded, gate_padded))
+                latent_prior_params, observed_prior_params) = model(x)
+            mel_loss, gate_loss = val_criterion(y_pred, y)
             loss = mel_loss + gate_loss
             val_loss += loss
             total_samples += batch.size()[0]

@@ -252,9 +252,9 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
             for _ in range(hparams.smaller_batch_count):
                 batch = [t[batch_start:batch_start+smaller_batch_size, ...] for t in big_batch]
                 batch_start += smaller_batch_size
-                (x, y), speaker_ids = model.parse_batch(batch)
+                (x, y), speaker_ids = model.parse_batch(batch, max_input_length=max_length)
                 (y_pred, latent_params, observed_params,
-                latent_prior_params, observed_prior_params) = model(x, max_length)
+                latent_prior_params, observed_prior_params) = model(x)
 
                 try:
                     elbo, mel_loss, gate_loss = criterion(y_pred, latent_params, observed_params,
