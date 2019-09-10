@@ -9,9 +9,9 @@ def get_mask_from_lengths(lengths, max_len=None, invert=False):
         max_len = torch.max(lengths).item()
     ids = torch.arange(0, max_len, dtype=torch.long, device=lengths.device)
     if invert:
-        mask = ids >= lengths.unsqueeze(1)
+        mask = ids.unsqueeze(0) >= lengths.unsqueeze(1)
     else:
-        mask = ids < lengths.unsqueeze(1)
+        mask = ids.unsqueeze(0) < lengths.unsqueeze(1)
     return mask
 
 
