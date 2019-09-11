@@ -258,7 +258,7 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
     # ================ MAIN TRAINNIG LOOP! ===================
     for epoch in range(epoch_offset, hparams.epochs):
         if hparams.num_cores == 1:
-            optimizer_dict_save = train_loop_fn(model_parallel, train_loader,
+            optimizer_dict_save = train_loop_fn(model, train_loader,
                                                 devices[0], None)
             val_loss = val_loop_fn(model, val_loader, devices[0], None)
             val_losses = [val_loss]
