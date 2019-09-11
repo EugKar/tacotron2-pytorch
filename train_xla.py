@@ -184,12 +184,15 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
 
         def create_optimizer():
             optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
-                                 weight_decay=hparams.weight_decay)
+                                         weight_decay=hparams.weight_decay)
             if optimizer_dict is not None:
                 optimizer.load_state_dict(optimizer_dict)
             return optimizer
 
-        optimizer = context.getattr_or('optimizer', create_optimizer)
+        if context is not None:
+            optimizer = context.getattr_or('optimizer', create_optimizer)
+        else:
+            optimizer = create_optimizer()
         tracker = xm.RateTracker()
 
         model.train()
@@ -201,14 +204,19 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
 
             optimizer.zero_grad()
 
-            (x, y), speaker_ids = model.parse_batch(batch, max_input_length=hparams.max_input_len,
-                max_output_length=hparams.max_frames, device=device)
-            
+            (x, y), speaker_ids = model.parse_batch(batch,
+                                                    max_input_length=hparams.max_input_len,
+                                                    max_output_length=hparams.max_frames,
+                                                    device=device)
+
             (y_pred, latent_params, observed_params,
                 latent_prior_params, observed_prior_params) = model(x)
 
-            elbo, mel_loss, gate_loss = criterion(y_pred, latent_params, observed_params,
-                latent_prior_params, observed_prior_params, speaker_ids, y)
+            elbo, mel_loss, gate_loss = criterion(y_pred, latent_params,
+                                                  observed_params,
+                                                  latent_prior_params,
+                                                  observed_prior_params,
+                                                  speaker_ids, y)
 
             loss = elbo + gate_loss
             reduced_loss = loss.item()
@@ -225,6 +233,8 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
             duration = time.perf_counter() - start
             print("Device {} iteration {} epoch {}: train loss {:.6f} mel loss {:.6f} ELBO {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(
                 device, iteration, epoch, reduced_loss, reduced_mel_loss, reduced_elbo, grad_norm, duration))
+            if hparams.metrics_debug:
+                print(torch_xla._XLAC._xla_metrics_report())
         return optimizer.state_dict()
 
     def val_loop_fn(model, loader, device, context):
@@ -232,8 +242,10 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
         val_loss = 0.0
         total_samples = 0
         for batch in loader:
-            (x, y), speaker_ids = model.parse_batch(batch, max_input_length=hparams.max_input_len,
-                max_output_length=hparams.max_frames, device=device)
+            (x, y), speaker_ids = model.parse_batch(batch,
+                                                    max_input_length=hparams.max_input_len,
+                                                    max_output_length=hparams.max_frames,
+                                                    device=device)
             (y_pred, latent_params, observed_params,
                 latent_prior_params, observed_prior_params) = model(x)
             mel_loss, gate_loss = val_criterion(y_pred, y)
@@ -245,19 +257,25 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
 
     # ================ MAIN TRAINNIG LOOP! ===================
     for epoch in range(epoch_offset, hparams.epochs):
-        optimizer_dict_save = model_parallel(train_loop_fn, train_loader)[0]
-        val_losses = model_parallel(val_loop_fn, val_loader)
+        if hparams.num_cores == 1:
+            optimizer_dict_save = train_loop_fn(model_parallel, train_loader,
+                                                devices[0], None)
+            val_loss = val_loop_fn(model, val_loader, devices[0], None)
+            val_losses = [val_loss]
+        else:
+            optimizer_dict_save = model_parallel(train_loop_fn, train_loader)[0]
+            val_losses = model_parallel(val_loop_fn, val_loader)
         val_loss = sum(val_losses) / len(val_losses)
         # logger.log_training(
-        #     reduced_loss, reduced_mel_loss, reduced_elbo, grad_norm, learning_rate, duration, iteration)
+        #     reduced_loss, reduced_mel_loss, reduced_elbo, grad_norm,
+        #     learning_rate, duration, iteration)
 
         checkpoint_path = os.path.join(
             output_directory, "checkpoint_{}".format(epoch))
-        save_checkpoint(model_parallel.models[0], optimizer_dict_save, learning_rate,
+        save_checkpoint(model_parallel.models[0] if num_cores != 1 else model,
+                        optimizer_dict_save, learning_rate,
                         epoch, checkpoint_path)
         print("Validation loss {}: {:9f}  ".format(epoch, val_loss))
-        if hparams.metrics_debug:
-            print(torch_xla._XLAC._xla_metrics_report())
         # logger.log_validation(val_loss, model, y, y_pred, iteration)
 
 if __name__ == '__main__':
