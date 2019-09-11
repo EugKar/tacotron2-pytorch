@@ -172,7 +172,10 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
             checkpoint_path, model)
         if hparams.use_saved_learning_rate:
             learning_rate = _learning_rate
-    model_parallel = dp.DataParallel(model, device_ids=devices)
+    if num_cores != 1:
+        model_parallel = dp.DataParallel(model, device_ids=devices)
+    else:
+        model = model.to(device=devices[0])
 
     epoch_offset += 1  # next iteration is iteration + 1
 
