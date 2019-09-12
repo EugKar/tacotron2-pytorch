@@ -445,7 +445,7 @@ class Decoder(nn.Module):
             alignments = torch.zeros([max_output_length, mel_outputs.size(1), max_memory_length],
                 dtype=mel_outputs.dtype, device=mel_outputs.device)
             for i in range(max_output_length):
-                decoder_input = decoder_inputs[len(mel_outputs)]
+                decoder_input = decoder_inputs[i]
                 mel_output, gate_output, attention_weights = self.decode(
                     decoder_input, z_latent, z_observed)
                 mel_outputs[i, ...] = mel_output.squeeze(1)
