@@ -183,7 +183,7 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
         torch.autograd.set_detect_anomaly(True)
 
     def train_loop_fn(model, loader, device, context):
-        criterion = VAELoss()
+        criterion = VAELoss(enable_numerical_check=False)
 
         def create_optimizer():
             optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate,
@@ -222,9 +222,6 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
                                                   speaker_ids, y)
 
             loss = elbo + gate_loss
-            reduced_loss = loss.item()
-            reduced_mel_loss = mel_loss.item()
-            reduced_elbo = elbo.item()
             loss.backward()
 
             grad_norm = clip_grad_norm_xla_(model.parameters(), hparams.grad_clip_thresh)
@@ -235,7 +232,7 @@ def train(output_directory, log_directory, checkpoint_path, hparams):
             tracker.add(hparams.batch_size)
             duration = time.perf_counter() - start
             print("Device {} iteration {} epoch {}: train loss {:.6f} mel loss {:.6f} ELBO {:.6f} Grad Norm {:.6f} {:.2f}s/it".format(
-                device, iteration, epoch, reduced_loss, reduced_mel_loss, reduced_elbo, grad_norm, duration))
+                device, iteration, epoch, loss.item(), mel_loss.item(), elbo.item(), grad_norm, duration))
             if hparams.metrics_debug:
                 print(torch_xla._XLAC._xla_metrics_report())
         return optimizer.state_dict()
