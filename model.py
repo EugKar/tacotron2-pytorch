@@ -518,18 +518,20 @@ class LatentEncoder(nn.Module):
         x_sorted = x.gather(0, gather_inds)
 
         # pytorch tensor are not reversible, hence the conversion
-        input_lengths_sorted = input_lengths_sorted.cpu().numpy()
+        input_lengths_sorted_cpu = input_lengths_sorted.cpu().numpy()
         x_sorted = nn.utils.rnn.pack_padded_sequence(
-            x_sorted, input_lengths_sorted, batch_first=True)
+            x_sorted, input_lengths_sorted_cpu, batch_first=True)
 
         self.gru.flatten_parameters()
         outputs, _ = self.gru(x_sorted)
 
         outputs, _ = nn.utils.rnn.pad_packed_sequence(
             outputs, batch_first=True)
-
-        outputs = outputs.mean(dim=1)
-        mu, logvar = self.mu_linear_projection(outputs), self.logvar_linear_projection(outputs)
+        mask = get_mask_from_lengths(input_lengths_sorted)
+        outputs = (outputs * mask).sum(dim=1) / mask.sum(dim=1)
+        # outputs = outputs.mean(dim=1)
+        mu = F.softshrink(self.mu_linear_projection(outputs))
+        logvar = F.leaky_relu(self.logvar_linear_projection(outputs))
 
         mu_unsorted, logvar_unsorted = torch.zeros_like(mu), torch.zeros_like(logvar)
         scatter_inds = inds.unsqueeze(1).repeat([1, mu.size()[1]])
