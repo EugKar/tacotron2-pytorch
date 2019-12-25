@@ -110,6 +110,8 @@ class TextMelCollate():
         for i in range(len(ids_sorted_decreasing)):
             sample = batch[ids_sorted_decreasing[i]]
             text = sample[0]
+            if text.size(0) > max_input_len:
+                text = text[:max_input_len]
             text_padded[i, :text.size(0)] = text
             if len(sample) >= 3:
                 speaker_ids[i] = sample[2]
@@ -129,6 +131,8 @@ class TextMelCollate():
         output_lengths = torch.LongTensor(len(batch))
         for i in range(len(ids_sorted_decreasing)):
             mel = batch[ids_sorted_decreasing[i]][1]
+            if mel.size(1) > max_target_len:
+                mel = mel[:, :max_target_len]
             mel_padded[i, :, :mel.size(1)] = mel
             gate_padded[i, mel.size(1)-1:] = 1
             output_lengths[i] = mel.size(1)
