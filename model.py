@@ -527,11 +527,11 @@ class LatentEncoder(nn.Module):
 
         outputs, _ = nn.utils.rnn.pad_packed_sequence(
             outputs, batch_first=True)
-        mask = get_mask_from_lengths(input_lengths_sorted)
+        mask = get_mask_from_lengths(input_lengths_sorted).unsqueeze(-1).float()
         outputs = (outputs * mask).sum(dim=1) / mask.sum(dim=1)
         # outputs = outputs.mean(dim=1)
-        mu = F.softshrink(self.mu_linear_projection(outputs))
-        logvar = F.leaky_relu(self.logvar_linear_projection(outputs))
+        mu = self.mu_linear_projection(outputs)
+        logvar = self.logvar_linear_projection(outputs)
 
         mu_unsorted, logvar_unsorted = torch.zeros_like(mu), torch.zeros_like(logvar)
         scatter_inds = inds.unsqueeze(1).repeat([1, mu.size()[1]])
