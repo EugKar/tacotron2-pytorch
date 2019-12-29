@@ -430,8 +430,8 @@ class Decoder(nn.Module):
             memory, mask=get_mask_from_lengths(memory_lengths, max_len=max_memory_length, invert=True))
 
         mel_outputs, gate_outputs, alignments = [], [], []
-        import torch_xla.debug.metrics as met
-        import torch_xla_py.xla_model as xm
+        # import torch_xla.debug.metrics as met
+        # import torch_xla_py.xla_model as xm
         for i in range(max_output_length):
             decoder_input = decoder_inputs[len(mel_outputs)]
             mel_output, gate_output, attention_weights = self.decode(
@@ -696,16 +696,12 @@ class VAE(nn.Module):
             output_lengths, max_output_length) = inputs
         text_lengths, output_lengths = text_lengths.data, output_lengths.data
 
-#        latent_z_mu, latent_z_logvar = self.latent_z(mels, output_lengths, max_output_length)
+        latent_z_mu, latent_z_logvar = self.latent_z(mels, output_lengths, max_output_length)
 
-#        observed_z_mu, observed_z_logvar = self.observed_z(mels, output_lengths, max_output_length)
+        observed_z_mu, observed_z_logvar = self.observed_z(mels, output_lengths, max_output_length)
 
-#        z_latent = MultivariateNormal(latent_z_mu, scale_tril=(0.5 * latent_z_logvar).exp().diag_embed()).rsample()
-#        z_observed = MultivariateNormal(observed_z_mu, scale_tril=(0.5 * observed_z_logvar).exp().diag_embed()).rsample()
-        z_latent = torch.zeros([mels.size(0), self.hparams.latent_z_output_dim]).to(inputs[0].device)
-        z_observed = torch.zeros([mels.size(0), self.hparams.observed_z_output_dim]).to(inputs[0].device)
-        latent_z_mu, latent_z_logvar = z_latent, z_latent
-        observed_z_mu, observed_z_logvar = z_observed, z_observed
+        z_latent = MultivariateNormal(latent_z_mu, scale_tril=(0.5 * latent_z_logvar).exp().diag_embed()).rsample()
+        z_observed = MultivariateNormal(observed_z_mu, scale_tril=(0.5 * observed_z_logvar).exp().diag_embed()).rsample()
 
         return (self.synthesizer(inputs, z_latent, z_observed),
             (latent_z_mu, latent_z_logvar),
