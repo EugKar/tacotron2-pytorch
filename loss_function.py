@@ -5,6 +5,7 @@ from torch.distributions import MultivariateNormal
 
 EPS = 1e-10
 
+
 class Tacotron2Loss(nn.Module):
     def __init__(self):
         super(Tacotron2Loss, self).__init__()
@@ -17,10 +18,12 @@ class Tacotron2Loss(nn.Module):
 
         mel_out, mel_out_postnet, gate_out, _ = model_output
         gate_out = gate_out.view(-1, 1)
-        mel_loss = nn.MSELoss()(mel_out, mel_target) + \
-            nn.MSELoss()(mel_out_postnet, mel_target)
+        # mel_loss = nn.MSELoss()(mel_out, mel_target) + \
+        #     nn.MSELoss()(mel_out_postnet, mel_target)
+        mel_loss = (mel_out - mel_target).pow(2).mean() + (mel_out_postnet - mel_target).pow(2).mean()
         gate_loss = nn.BCEWithLogitsLoss()(gate_out, gate_target)
         return mel_loss, gate_loss
+
 
 class LatentClassProb(nn.Module):
     def __init__(self):
@@ -52,11 +55,13 @@ class LatentClassProb(nn.Module):
         q_y_x = y_probs / y_probs.sum(dim=1, keepdim=True)
         return q_y_x
 
+
 class VAELoss(nn.Module):
-    def __init__(self):
+    def __init__(self, enable_numerical_check=True):
         super(VAELoss, self).__init__()
         self.tacotron2loss = Tacotron2Loss()
         self.q_y_x = LatentClassProb()
+        self.enable_numerical_check = enable_numerical_check
 
     def kl_multivar_norm_diag(self, mu0, logvar0, mu1, logvar1):
         '''
@@ -93,8 +98,9 @@ class VAELoss(nn.Module):
         # q(y_l | X), dimensions: B x K_l
         q_yl_x = self.q_y_x(latent_mu, latent_logvar, latent_prior_mu,
                                latent_prior_sigma)
-        if torch.isnan(q_yl_x).any() or torch.isinf(q_yl_x).any():
-            raise ValueError('q_y_x is inf or NaN')
+        if self.enable_numerical_check:
+            if torch.isnan(q_yl_x).any() or torch.isinf(q_yl_x).any():
+                raise ValueError('q_y_x is inf or NaN')
 
         # p(z_o | y_o) parameters, dimensions: B x D_o
         d_o = observed_mu.size()[1]
@@ -106,8 +112,9 @@ class VAELoss(nn.Module):
         kl_z_observed = self.kl_multivar_norm_diag(
             observed_mu, observed_logvar,
             observed_prior_mu_yo, observed_prior_sigma_yo.pow(2).log())
-        if torch.isnan(kl_z_observed).any() or torch.isinf(kl_z_observed).any():
-            raise ValueError('kl_z_observed is inf or NaN')
+        if self.enable_numerical_check:
+            if torch.isnan(kl_z_observed).any() or torch.isinf(kl_z_observed).any():
+                raise ValueError('kl_z_observed is inf or NaN')
 
         # D_KL(q(z_l | X) || p(z_l || y_l)), dimensions: B x K_l
         k_l = latent_prior_mu.size()[0]
@@ -117,15 +124,18 @@ class VAELoss(nn.Module):
             latent_logvar.unsqueeze(1).repeat([1, k_l, 1]),
             latent_prior_mu.unsqueeze(0).repeat([b, 1, 1]),
             latent_prior_sigma.unsqueeze(0).repeat([b, 1, 1]).pow(2).log())
-        if torch.isnan(kl_z_latent).any() or torch.isinf(kl_z_latent).any():
-            raise ValueError('kl_z_latent is inf or NaN')
+        if self.enable_numerical_check:
+            if torch.isnan(kl_z_latent).any() or torch.isinf(kl_z_latent).any():
+                raise ValueError('kl_z_latent is inf or NaN')
 
         # D_KL(q(y_l | X) || p(y_l)), dimensions: B
         kl_y_latent = (q_yl_x * (q_yl_x.add_(EPS).log() + math.log(k_l))).sum(dim=1)
-        if torch.isnan(kl_y_latent).any() or torch.isinf(kl_y_latent).any():
-            raise ValueError('kl_y_latent is inf or NaN')
+        if self.enable_numerical_check:
+            if torch.isnan(kl_y_latent).any() or torch.isinf(kl_y_latent).any():
+                raise ValueError('kl_y_latent is inf or NaN')
 
         elbo = mel_loss + kl_z_observed.mean() + (q_yl_x * kl_z_latent).sum(dim=1).mean() + kl_y_latent.mean()
-        if torch.isnan(elbo).any() or torch.isinf(elbo).any():
-            raise ValueError('ELBO is Inf or NaN')
+        if self.enable_numerical_check:
+            if torch.isnan(elbo).any() or torch.isinf(elbo).any():
+                raise ValueError('ELBO is Inf or NaN')
         return elbo, mel_loss, gate_loss

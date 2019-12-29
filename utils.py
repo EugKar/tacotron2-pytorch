@@ -4,11 +4,14 @@ import torch
 import librosa
 
 
-def get_mask_from_lengths(lengths, max_len=None):
+def get_mask_from_lengths(lengths, max_len=None, invert=False):
     if max_len is None:
         max_len = torch.max(lengths).item()
-    ids = torch.arange(0, max_len, out=torch.cuda.LongTensor(max_len))
-    mask = (ids < lengths.unsqueeze(1)).byte()
+    ids = torch.arange(0, max_len, dtype=torch.long, device=lengths.device)
+    if invert:
+        mask = ids.unsqueeze(0).expand(lengths.size(0), -1) >= lengths.unsqueeze(1)
+    else:
+        mask = ids.unsqueeze(0).expand(lengths.size(0), -1) < lengths.unsqueeze(1)
     return mask
 
 
@@ -24,9 +27,9 @@ def load_filepaths_and_text(filename, split="|"):
     return filepaths_and_text
 
 
-def to_gpu(x):
+def to_device(x, device=None, dtype=None):
     x = x.contiguous()
+    if device is None:
+        device = torch.cuda.current_device() if torch.cuda.is_available() else 'cpu'
 
-    if torch.cuda.is_available():
-        x = x.cuda(non_blocking=True)
-    return torch.autograd.Variable(x)
+    return x.to(device=device, dtype=dtype, non_blocking=True, copy=True)

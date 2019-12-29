@@ -83,7 +83,9 @@ class TextMelLoader(torch.utils.data.Dataset):
 class TextMelCollate():
     """ Zero-pads model inputs and targets based on number of frames per setep
     """
-    def __init__(self, n_frames_per_step):
+    def __init__(self, n_frames_per_step, max_input_len=None, max_target_len=None):
+        self.max_input_len = max_input_len
+        self.max_target_len = max_target_len
         self.n_frames_per_step = n_frames_per_step
 
     def __call__(self, batch):
@@ -96,7 +98,7 @@ class TextMelCollate():
         input_lengths, ids_sorted_decreasing = torch.sort(
             torch.LongTensor([len(x[0]) for x in batch]),
             dim=0, descending=True)
-        max_input_len = input_lengths[0]
+        max_input_len = input_lengths[0] if self.max_input_len is None else self.max_input_len
 
         text_padded = torch.LongTensor(len(batch), max_input_len)
         text_padded.zero_()
@@ -108,13 +110,15 @@ class TextMelCollate():
         for i in range(len(ids_sorted_decreasing)):
             sample = batch[ids_sorted_decreasing[i]]
             text = sample[0]
+            if text.size(0) > max_input_len:
+                text = text[:max_input_len]
             text_padded[i, :text.size(0)] = text
             if len(sample) >= 3:
                 speaker_ids[i] = sample[2]
 
         # Right zero-pad mel-spec
         num_mels = batch[0][1].size(0)
-        max_target_len = max([x[1].size(1) for x in batch])
+        max_target_len = max([x[1].size(1) for x in batch]) if self.max_target_len is None else self.max_target_len
         if max_target_len % self.n_frames_per_step != 0:
             max_target_len += self.n_frames_per_step - max_target_len % self.n_frames_per_step
             assert max_target_len % self.n_frames_per_step == 0
@@ -127,6 +131,8 @@ class TextMelCollate():
         output_lengths = torch.LongTensor(len(batch))
         for i in range(len(ids_sorted_decreasing)):
             mel = batch[ids_sorted_decreasing[i]][1]
+            if mel.size(1) > max_target_len:
+                mel = mel[:, :max_target_len]
             mel_padded[i, :, :mel.size(1)] = mel
             gate_padded[i, mel.size(1)-1:] = 1
             output_lengths[i] = mel.size(1)

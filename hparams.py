@@ -29,7 +29,7 @@ def create_hparams(hparams_string=None, verbose=False):
         training_files='filelists_libritts/libritts_audio_text_train_filelist.txt',
         validation_files='filelists_libritts/libritts_audio_text_val_filelist.txt',
         text_cleaners=['english_cleaners'],
-        # speakers_count=247,
+        max_input_len=500,
 
         ################################
         # Audio Parameters             #
@@ -42,6 +42,7 @@ def create_hparams(hparams_string=None, verbose=False):
         n_mel_channels=80,
         mel_fmin=0.0,
         mel_fmax=8000.0,
+        max_frames=3500,
 
         ################################
         # Model Parameters             #
@@ -87,7 +88,7 @@ def create_hparams(hparams_string=None, verbose=False):
         latent_rnn_dim=512,
         latent_y_output_dim=10,
         latent_z_output_dim=16,
-        observed_y_output_dim=247,
+        observed_y_output_dim=1151,
         observed_z_output_dim=16,
         latent_sigma_init=math.exp(-1),
         latent_sigma_min=math.exp(-2),
@@ -104,7 +105,13 @@ def create_hparams(hparams_string=None, verbose=False):
         grad_clip_thresh=1.0,
         batch_size=64,
         mask_padding=True,  # set model's padded outputs to padded values
-        smaller_batch_count=1
+        smaller_batch_count=1,
+
+        # XLA Hyperparameters
+        num_workers=4,
+        num_cores=-1,
+        metrics_debug=False,
+        enable_pack_padded_sequence=True,
     )
 
     if hparams_string:
