@@ -556,7 +556,7 @@ class LatentEncoder(nn.Module):
             outputs, _ = nn.utils.rnn.pad_packed_sequence(
                 outputs, batch_first=True, total_length=total_length)
 
-        mask = get_mask_from_lengths(input_lengths_sorted).unsqueeze(-1).float()
+        mask = get_mask_from_lengths(input_lengths_sorted, max_len=total_length).unsqueeze(-1).float()
         outputs = (outputs * mask).sum(dim=1) / mask.sum(dim=1)
         # outputs = outputs.mean(dim=1)
         mu = self.mu_linear_projection(outputs)
