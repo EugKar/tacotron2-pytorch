@@ -186,8 +186,8 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     if hparams.distributed_run:
         init_distributed(hparams, n_gpus, rank, group_name)
 
-    # torch.manual_seed(hparams.seed)
-    # torch.cuda.manual_seed(hparams.seed)
+    torch.manual_seed(hparams.seed)
+    torch.cuda.manual_seed(hparams.seed)
 
     model = load_model(hparams)
     learning_rate = hparams.learning_rate
@@ -215,6 +215,7 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     # Load checkpoint if one exists
     iteration = 0
     epoch_offset = 0
+    batch_offset = 0
     if checkpoint_path is not None:
         if warm_start:
             model = warm_start_model(
@@ -226,7 +227,8 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
                 learning_rate = _learning_rate
             iteration += 1  # next iteration is iteration + 1
             epoch_offset = max(0, int(iteration / len(train_loader)))
-
+            iters_per_epoch = math.ceil(len(train_loader.dataset) / train_loader.batch_size)
+            batch_offset = iteration % iters_per_epoch
     if hparams.autograd_detect_anomalies:
         torch.autograd.set_detect_anomaly(True)
 
@@ -240,6 +242,9 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     for epoch in range(epoch_offset, hparams.epochs):
         print("Epoch: {}".format(epoch))
         for i, big_batch in enumerate(train_loader):
+            if i < batch_offset:
+                continue
+            batch_offset = 0
             start = time.perf_counter()
             for param_group in optimizer.param_groups:
                 param_group['lr'] = learning_rate
