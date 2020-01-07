@@ -186,8 +186,8 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     if hparams.distributed_run:
         init_distributed(hparams, n_gpus, rank, group_name)
 
-    torch.manual_seed(hparams.seed)
-    torch.cuda.manual_seed(hparams.seed)
+    # torch.manual_seed(hparams.seed)
+    # torch.cuda.manual_seed(hparams.seed)
 
     model = load_model(hparams)
     learning_rate = hparams.learning_rate
@@ -242,8 +242,8 @@ def train(output_directory, log_directory, checkpoint_path, warm_start, n_gpus,
     for epoch in range(epoch_offset, hparams.epochs):
         print("Epoch: {}".format(epoch))
         for i, big_batch in enumerate(train_loader):
-            if i < batch_offset:
-                continue
+            # if i < batch_offset:
+            #     continue
             batch_offset = 0
             start = time.perf_counter()
             for param_group in optimizer.param_groups:
